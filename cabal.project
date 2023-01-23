@@ -1,0 +1,5 @@
+packages: .
+
+
+package amqp-base
+  flags: +use-doc-tests
