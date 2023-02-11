@@ -4,19 +4,13 @@ version:            0.1.0.0
 synopsis:           Message queues as a reactive-values
 description:
   Models message queues as [Reactive Values](https://hackage.haskell.org/package/keera-hails-reactivevalues-0.8.0/docs/Data-ReactiveValue.html)
-
   - Outbound Queues are writeonly RVs
   - Inbound Queues are readonly RVs
-
   When receiving, the readonly RV has the following behaviour
-
   the each receiving thread has a consumer thread dedicated to processing
   inbound messages
-
   on message receipt, the message envelope is placed in an IORef and
   reactiveValueCanRead is invoked
-
-
 
 license:            BSD-3-Clause
 license-file:       LICENSE
@@ -24,46 +18,66 @@ author:             Tim Emiola
 maintainer:         adetokunbo@emio.la
 category:           Web
 homepage:           https://github.com/adetokunbo/amqp-base#readme
-bug-reports:
-  https://github.com/adetokunbo/amqp-base/issues
-
+bug-reports:        https://github.com/adetokunbo/amqp-base/issues
 build-type:         Simple
-extra-source-files:
-  ChangeLog.md
+extra-source-files: ChangeLog.md
+data-files:         spec/*.xml
 
 source-repository head
   type:     git
   location: https://github.com/adetokunbo/amqp-base.git
 
 library
-  exposed-modules:  Test.Hspec.Benri
+  autogen-modules:  Paths_amqp_base
+  other-modules:    Paths_amqp_base
+  exposed-modules:
+    Protocol.AMQP.Attoparsec
+    Protocol.AMQP.Bits
+    Protocol.AMQP.Extracted
+    Protocol.AMQP.FieldValue
+    Protocol.AMQP.TH
+    Protocol.AMQP.Translated
+
   hs-source-dirs:   src
   build-depends:
-    , base                        >=4.10 && <5
-    , hspec                       >=2.7.0 && <2.12.0
-    , keera-hails-reactivevalues  >=0.6 && <0.9
+    , attoparsec         >=0.14.4   && <0.15
+    , attoparsec-binary  >=0.2      && <0.3
+    , base               >=4.10     && <5
+    , bytestring         >=0.10.8.2 && <0.12.0.0
+    , chunked-data       >=0.3.0    && <0.4
+    , containers         >=0.6.5    && <0.8
+    , file-embed         >=0.0.15   && <0.1
+    , reinterpret-cast   >=0.1      && <0.3
+    , split              >=0.2.3    && <0.3
+    , template-haskell   >=2.16.0   && <2.17
+    , text               >=1.2.3    && <2.2
+    , xml                >=1.3.14   && <1.5
+    , pretty-simple
 
   default-language: Haskell2010
-  ghc-options:      -Wall -Wincomplete-uni-patterns -Wpartial-fields -fwarn-tabs
+  ghc-options:
+    -Wall -Wincomplete-uni-patterns -Wpartial-fields -fwarn-tabs
 
-
-Flag build-the-readme
+flag build-the-readme
   description: Allow the readme to build
   default:     False
 
-
 test-suite readme
-  if os(windows) || !flag(build-the-readme)
+  if (os(windows) || !flag(build-the-readme))
     buildable: False
+
   else
     buildable: True
 
   build-tool-depends: markdown-unlit:markdown-unlit
-  type:             exitcode-stdio-1.0
-  ghc-options:        -pgmL markdown-unlit -threaded -rtsopts -with-rtsopts=-N -Wall -Wincomplete-patterns -Wpartial-fields
+  type:               exitcode-stdio-1.0
+  ghc-options:
+    -pgmL markdown-unlit -threaded -rtsopts -with-rtsopts=-N -Wall
+    -Wincomplete-patterns -Wpartial-fields
+
   main-is:            README.lhs
   default-language:   Haskell2010
   build-depends:
-    , base
     , amqp-base
+    , base
     , hspec
