@@ -34,6 +34,7 @@ library
     Protocol.AMQP.Attoparsec
     Protocol.AMQP.Bits
     Protocol.AMQP.Extracted
+    Protocol.AMQP.Elementary
     Protocol.AMQP.FieldValue
     Protocol.AMQP.TH
     Protocol.AMQP.Translated
