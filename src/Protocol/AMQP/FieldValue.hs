@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -49,7 +50,10 @@ import Data.Coerce (coerce)
 import Data.Int (Int16, Int32, Int64, Int8)
 import Data.Text (Text)
 import qualified Data.Text.Encoding as Text
+import Data.Validity (Validity (..))
+import Data.Validity.ByteString ()
 import Data.Word (Word16, Word32, Word64, Word8)
+import GHC.Generics (Generic)
 import qualified Protocol.AMQP.Attoparsec as A
 
 
@@ -62,7 +66,7 @@ import qualified Protocol.AMQP.Attoparsec as A
 
 newtype LongLongInt = LongLongInt Word64
   deriving stock (Eq, Ord, Show)
-  deriving (Num, Real, Integral, Bits, FiniteBits, Enum, Bounded, Read, ParserOf) via Word64
+  deriving (Num, Real, Integral, Bits, FiniteBits, Enum, Bounded, Read, ParserOf, Validity) via Word64
 
 
 instance ParserOf Word64 where
@@ -75,7 +79,7 @@ instance ToBuilder LongLongInt BB.Builder where
 
 newtype LongInt = LongInt Word32
   deriving stock (Eq, Ord, Show)
-  deriving (Num, Real, Integral, Bits, FiniteBits, Enum, Bounded, Read, ParserOf) via Word32
+  deriving (Num, Real, Integral, Bits, FiniteBits, Enum, Bounded, Read, ParserOf, Validity) via Word32
 
 
 instance ParserOf Word32 where
@@ -88,7 +92,7 @@ instance ToBuilder LongInt BB.Builder where
 
 newtype ShortInt = ShortInt Word16
   deriving stock (Eq, Ord, Show)
-  deriving (Num, Real, Integral, Bits, FiniteBits, Enum, Bounded, Read, ParserOf) via Word16
+  deriving (Num, Real, Integral, Bits, FiniteBits, Enum, Bounded, Read, ParserOf, Validity) via Word16
 
 
 instance ParserOf Word16 where
@@ -101,7 +105,7 @@ instance ToBuilder ShortInt BB.Builder where
 
 newtype Bit = Bit Bool
   deriving stock (Eq, Ord, Show)
-  deriving (Bits, FiniteBits, Enum, Bounded, Read, ParserOf) via Bool
+  deriving (Bits, FiniteBits, Enum, Bounded, Read, ParserOf, Validity) via Bool
 
 
 instance ParserOf Bool where
@@ -114,7 +118,7 @@ instance ToBuilder Bit BB.Builder where
 
 newtype Octet = Octet Word8
   deriving stock (Eq, Ord, Show)
-  deriving (Num, Bits, FiniteBits, Enum, Bounded, Real, Read, Integral, ParserOf) via Word8
+  deriving (Num, Bits, FiniteBits, Enum, Bounded, Real, Read, Integral, ParserOf, Validity) via Word8
 
 
 instance ToBuilder Octet BB.Builder where
@@ -123,6 +127,7 @@ instance ToBuilder Octet BB.Builder where
 
 newtype DecimalValue = DecimalValue (Octet, LongInt)
   deriving (Eq, Ord, Show)
+  deriving (Validity) via (Octet, LongInt)
 
 
 class ParserOf a where
@@ -143,6 +148,7 @@ instance ParserOf DecimalValue where
 
 newtype LongString = LongString ByteString
   deriving (Eq, Ord, Show)
+  deriving (Validity) via ByteString
 
 
 instance ToBuilder LongString BB.Builder where
@@ -155,6 +161,7 @@ instance ParserOf LongString where
 
 newtype ShortString = ShortString ByteString
   deriving (Eq, Ord, Show)
+  deriving (Validity) via ByteString
 
 
 mkShortString :: Text -> Either Text ShortString
@@ -173,7 +180,8 @@ instance ParserOf ShortString where
 
 
 newtype FieldTable = FieldTable [(ShortString, FieldValue)]
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
+  deriving anyclass (Validity)
 
 
 instance ToBuilder FieldTable BB.Builder where
@@ -206,7 +214,8 @@ data FieldValue
   | FByteArray !ByteString
   | FFieldArray ![FieldValue]
   | FFieldTable !FieldTable
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
+  deriving anyclass (Validity)
 
 
 instance ToBuilder FieldValue BB.Builder where
