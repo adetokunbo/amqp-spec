@@ -26,7 +26,6 @@ module Protocol.AMQP.FieldValue (
   ParserOf (..),
 
   -- * parserOf combinators
-  matchTwoPrefixes,
   bitAt,
 
   -- * toBuilder combinators
@@ -315,13 +314,3 @@ onlyPrefixes a b = word16BE a <> word16BE b
 
 withPrefixes :: ToBuilder a BB.Builder => Word16 -> Word16 -> a -> BB.Builder
 withPrefixes a b builder = onlyPrefixes a b <> toBuilder builder
-
-
-matchOnePrefix :: Word16 -> A.Parser a -> A.Parser a
-matchOnePrefix pre parser = A.word16be pre *> parser
-
-
-matchTwoPrefixes :: Word16 -> [(Word16, A.Parser a)] -> A.Parser a
-matchTwoPrefixes pre prefixedParsers =
-  let matchPres xs = A.choice $ map (\(nextPre, p) -> matchOnePrefix nextPre p) xs
-   in matchOnePrefix pre $ matchPres prefixedParsers

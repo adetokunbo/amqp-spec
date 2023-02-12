@@ -14,6 +14,8 @@ module Protocol.AMQP.Attoparsec (
   anyDoublebe,
   fixed,
   word16Pre,
+  with1Prefix,
+  with2Prefixes,
   module A,
 ) where
 
@@ -78,3 +80,13 @@ anyFloatbe = wordToFloat <$> anyWord32be
 -- | Many any big-endian float.
 anyDoublebe :: Parser Double
 anyDoublebe = wordToDouble <$> anyWord64be
+
+
+with1Prefix :: Word16 -> A.Parser a -> A.Parser a
+with1Prefix pre parser = A.word16be pre *> parser
+
+
+with2Prefixes :: Word16 -> [(Word16, A.Parser a)] -> A.Parser a
+with2Prefixes pre prefixedParsers =
+  let matchPres xs = A.choice $ map (\(nextPre, p) -> with1Prefix nextPre p) xs
+   in with1Prefix pre $ matchPres prefixedParsers

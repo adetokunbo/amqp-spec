@@ -43,6 +43,7 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Word (Word16)
 import Language.Haskell.TH
 import Paths_amqp_base
+import Protocol.AMQP.Attoparsec (with2Prefixes)
 import Protocol.AMQP.FieldValue
 import Protocol.AMQP.TH
 import Text.Read (readMaybe)
@@ -160,7 +161,7 @@ asToBuilderDec ci =
 asParserOfExp :: ClassInfo -> Exp
 asParserOfExp ci =
   let pairsExp = mkMatchTwoPairList $ map asMatchTwoPair $ ciMethods ci
-      firstApp = AppE (VarE 'matchTwoPrefixes) (LitE $ IntegerL $ toInteger $ ciPrefix ci)
+      firstApp = AppE (VarE 'with2Prefixes) (LitE $ IntegerL $ toInteger $ ciPrefix ci)
    in AppE firstApp pairsExp
 
 
