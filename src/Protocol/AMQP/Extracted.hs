@@ -42,7 +42,7 @@ import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
 import Data.Word (Word16)
 import Language.Haskell.TH
-import Paths_amqp_base
+import Paths_amqp_compiled
 import Protocol.AMQP.Attoparsec (with2Prefixes)
 import Protocol.AMQP.FieldValue
 import Protocol.AMQP.TH

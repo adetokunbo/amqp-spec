@@ -1,6 +1,6 @@
-# Revision history for amqp-base
+# Revision history for amqp-compiled
 
-`amqp-base` uses [PVP Versioning][1].
+`amqp-compiled` uses [PVP Versioning][1].
 
 
 ## 0.1.0.1 -- 2022-12-23

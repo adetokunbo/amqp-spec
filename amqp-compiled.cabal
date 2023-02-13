@@ -1,5 +1,5 @@
 cabal-version:      3.0
-name:               amqp-base
+name:               amqp-compiled
 version:            0.1.0.0
 synopsis:           Uses TemplateHaskell to extract types from the AMQP XML specification
 description:
@@ -14,19 +14,19 @@ license-file:       LICENSE
 author:             Tim Emiola
 maintainer:         adetokunbo@emio.la
 category:           Web
-homepage:           https://github.com/adetokunbo/amqp-base#readme
-bug-reports:        https://github.com/adetokunbo/amqp-base/issues
+homepage:           https://github.com/adetokunbo/amqp-compiled#readme
+bug-reports:        https://github.com/adetokunbo/amqp-compiled/issues
 build-type:         Simple
 extra-source-files: ChangeLog.md
 data-files:         spec/*.xml
 
 source-repository head
   type:     git
-  location: https://github.com/adetokunbo/amqp-base.git
+  location: https://github.com/adetokunbo/amqp-compiled.git
 
 library
-  autogen-modules:  Paths_amqp_base
-  other-modules:    Paths_amqp_base
+  autogen-modules:  Paths_amqp_compiled
+  other-modules:    Paths_amqp_compiled
   exposed-modules:
     Protocol.AMQP.Attoparsec
     Protocol.AMQP.Bits
@@ -77,6 +77,6 @@ test-suite readme
   main-is:            README.lhs
   default-language:   Haskell2010
   build-depends:
-    , amqp-base
+    , amqp-compiled
     , base
     , hspec
