@@ -20,8 +20,8 @@ module Protocol.AMQP.Bits (
   -- * data types
   buildWithPrefix,
   CanBuild (..),
-  IndexedProp,
-  anyIndexedPropMb,
+  BitIndex,
+  anyBitIndexedMb,
 
   -- * functions
 ) where
@@ -37,13 +37,13 @@ import qualified Protocol.AMQP.Attoparsec as A
 import Protocol.AMQP.FieldValue
 
 
+data CanBuild = forall a. ToBuilder a BB.Builder => CanBuild a
+
+
 buildWithPrefix :: [Maybe CanBuild] -> BB.Builder
 buildWithPrefix xs =
   let (asBits, _, asBytes) = foldl' canStep (0, 0, mempty) xs
    in word16BE asBits <> asBytes
-
-
-data CanBuild = forall a. ToBuilder a BB.Builder => CanBuild a
 
 
 canStep :: (Word16, Int, BB.Builder) -> Maybe CanBuild -> (Word16, Int, BB.Builder)
@@ -51,17 +51,17 @@ canStep (acc, pos, builder) Nothing = (acc, pos + 1, builder)
 canStep (acc, pos, builder) (Just (CanBuild b)) = (acc `setBit` pos, pos + 1, builder <> (toBuilder b))
 
 
-anyIndexedPropMb ::
+anyBitIndexedMb ::
   forall (n :: Nat) a b.
   ( KnownNat n
-  , n ~ IndexedProp a
+  , n ~ BitIndex a
   , ParserOf a
   , Bits b
   ) =>
   b ->
   A.Parser (Maybe a)
-anyIndexedPropMb x | testBit x (fromIntegral $ natVal @n Proxy) = fmap Just $ parserOf
-anyIndexedPropMb _ = pure Nothing
+anyBitIndexedMb x | testBit x (fromIntegral $ natVal @n Proxy) = fmap Just $ parserOf
+anyBitIndexedMb _ = pure Nothing
 
 
-type family IndexedProp (a :: *) :: Nat
+type family BitIndex (a :: *) :: Nat

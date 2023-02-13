@@ -11,16 +11,14 @@ module Protocol.AMQP.TH (
   -- * functions
   builderInstanceD,
   camelCase,
-  mkIndexedProp,
-  mkIndexedProps,
+  bitIndexDecsOf,
+  mkBitIndexDecs,
   mkBasicProperties,
-  mkParseBasicProperties,
-  mkBuildBasicProperties,
   mkParserOfInstance,
   mkInnerDataToBuilderDecs,
   newParserOfType,
-  indexedPropTyInstance,
-  anyIndexedPropMbConE,
+  bitIndexTyInstDecs,
+  anyBitIndexedMbConE,
   sumAdtDec,
   sumAdtDec',
   recordAdtDec,
@@ -39,10 +37,10 @@ import Protocol.AMQP.Bits
 import Protocol.AMQP.FieldValue
 
 
-mkIndexedProps :: [(String, Name)] -> DecsQ
-mkIndexedProps fieldNames =
-  let indexed = zip [1 ..] fieldNames
-      mk (pos, (raw, original)) = mkIndexedProp (pascalCase raw) pos original
+mkBitIndexDecs :: [(String, Name)] -> DecsQ
+mkBitIndexDecs fields =
+  let indexed = zip [1 ..] fields
+      mk (pos, (raw, original)) = bitIndexDecsOf (pascalCase raw) pos original
    in fmap concat $ traverse mk indexed
 
 
@@ -55,7 +53,7 @@ data BasicProperties = BasicProperties {
   bpFieldN :: !(Maybe NewtypeForFieldN)
 }
 
-In BasicProperties, every field type is a newtype registered as an IndexedProperty
+Every field in BasicProperties has a type that is a newtype registered with a BitIndex
 -}
 mkBasicProperties :: [(String, Name)] -> DecsQ
 mkBasicProperties fieldNames =
@@ -66,10 +64,10 @@ mkBasicProperties fieldNames =
       maybeOf x = AppT (ConT ''Maybe) (ConT x)
       mainRec = recordAdtDec (mkName "BasicProperties") (mkBasicFields fieldNames)
    in do
-        indexedPropsDecs <- mkIndexedProps fieldNames
+        bitIndexDecs <- mkBitIndexDecs fieldNames
         builderDecs <- mkBuildBasicProperties fieldNames
         parserDecs <- mkParseBasicProperties fieldNames
-        pure $ indexedPropsDecs <> [mainRec] <> builderDecs <> parserDecs
+        pure $ bitIndexDecs <> [mainRec] <> builderDecs <> parserDecs
 
 
 groupBitFields :: Foldable f => f (String, Name) -> [NE.NonEmpty (String, Name)]
@@ -106,15 +104,15 @@ mkParseBasicProperties fieldNames = do
   let argCount = length fieldNames
       instanceName = "BasicProperties"
       withWord16Pre f = pure $ AppE (VarE 'word16Pre) f
-  constrExp <- anyIndexedPropMbConE (mkName instanceName) argCount
+  constrExp <- anyBitIndexedMbConE (mkName instanceName) argCount
   mkParserOfInstance instanceName $ withWord16Pre constrExp
 
 
 -- fail if argCount < 2 ??
-anyIndexedPropMbConE :: Name -> Int -> Q Exp
-anyIndexedPropMbConE constrName argCount = do
+anyBitIndexedMbConE :: Name -> Int -> Q Exp
+anyBitIndexedMbConE constrName argCount = do
   x <- newName "x"
-  inv <- [|(anyIndexedPropMb $(varE x))|]
+  inv <- [|(anyBitIndexedMb $(varE x))|]
   let invs = inv :| replicate (argCount - 1) inv
   pure $ LamE [VarP x] $ applicativeConE constrName invs
 
@@ -146,11 +144,11 @@ justCanBuildConE argName funcName =
    in AppE withCanBuild (VarE argName)
 
 
-mkIndexedProp :: String -> Integer -> Name -> DecsQ
-mkIndexedProp wrapperName pos original = do
+bitIndexDecsOf :: String -> Integer -> Name -> DecsQ
+bitIndexDecsOf wrapperName pos original = do
   x <- newParserOfType wrapperName original
-  y <- indexedPropTyInstance wrapperName pos
-  z <- newTyBuilderInstance wrapperName
+  y <- bitIndexTyInstDecs wrapperName pos
+  z <- builderForNewTyDecs wrapperName
   pure $ x <> y <> z
 
 
@@ -176,18 +174,18 @@ eqShowDeriv :: DerivClause
 eqShowDeriv = DerivClause (Just StockStrategy) (map ConT [''Eq, ''Show])
 
 
-indexedPropTyInstance :: String -> Integer -> DecsQ
-indexedPropTyInstance wrapperName pos =
+bitIndexTyInstDecs :: String -> Integer -> DecsQ
+bitIndexTyInstDecs wrapperName pos =
   let name = mkName wrapperName
       decs =
         [d|
-          type instance IndexedProp $(conT name) = $(litT (numTyLit pos))
+          type instance BitIndex $(conT name) = $(litT (numTyLit pos))
           |]
    in decs
 
 
-newTyBuilderInstance :: String -> Q [Dec]
-newTyBuilderInstance wrapperName =
+builderForNewTyDecs :: String -> Q [Dec]
+builderForNewTyDecs wrapperName =
   let name = mkName wrapperName
       xName = mkName "x"
       varX = varP xName
