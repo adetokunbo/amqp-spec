@@ -1,16 +1,13 @@
 cabal-version:      3.0
 name:               amqp-base
 version:            0.1.0.0
-synopsis:           Message queues as a reactive-values
+synopsis:           Uses TemplateHaskell to extract types from the AMQP XML specification
 description:
-  Models message queues as [Reactive Values](https://hackage.haskell.org/package/keera-hails-reactivevalues-0.8.0/docs/Data-ReactiveValue.html)
-  - Outbound Queues are writeonly RVs
-  - Inbound Queues are readonly RVs
-  When receiving, the readonly RV has the following behaviour
-  the each receiving thread has a consumer thread dedicated to processing
-  inbound messages
-  on message receipt, the message envelope is placed in an IORef and
-  reactiveValueCanRead is invoked
+  Compiles the AMQP XML specification (v0.9.1) to Haskell types directly using
+  [Template Haskell](https://downloads.haskell.org/ghc/latest/docs/users_guide/exts/template_haskell.html#th-example).
+
+  It includes typeclass instances for each type that allow encoding/decoding
+  from a byte stream as describe in the specification.
 
 license:            BSD-3-Clause
 license-file:       LICENSE
@@ -47,7 +44,6 @@ library
     , bytestring           >=0.10.8.2 && <0.12.0.0
     , chunked-data         >=0.3.0    && <0.4
     , containers           >=0.6.5    && <0.8
-    , file-embed           >=0.0.15   && <0.1
     , pretty-simple
     , reinterpret-cast     >=0.1      && <0.3
     , split                >=0.2.3    && <0.3
