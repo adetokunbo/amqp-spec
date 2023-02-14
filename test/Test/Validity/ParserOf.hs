@@ -7,7 +7,9 @@
 module Test.Validity.ParserOf (
   -- * functions
   roundtripped,
+  roundtripped',
   roundtripSpecFor,
+  roundtripSpecFor',
   module Test.Validity,
   module Test.QuickCheck,
 ) where
@@ -21,6 +23,17 @@ import Test.Hspec (Spec, describe, it)
 import Test.QuickCheck (suchThat, withMaxSuccess)
 import Test.Validity (GenValid (..), forAllValid)
 import Test.Validity.Utils (nameOf)
+
+
+-- like 'roundtripped', but builds the bytes again and compares that this gets
+-- round issues with comparing data structures that contain floats and doubles
+-- that might be NaN and fail the equality test
+roundtripped' :: (Eq a, ToBuilder a BB.Builder, ParserOf a) => a -> Bool
+roundtripped' x =
+  let parser = A.parse parserOf bytes
+      asBytes = LBS.toStrict . BB.toLazyByteString . toBuilder
+      bytes = asBytes x
+   in Just bytes == (fmap asBytes $ A.maybeResult parser)
 
 
 roundtripped :: (Eq a, ToBuilder a BB.Builder, ParserOf a) => a -> Bool
@@ -39,3 +52,14 @@ roundtripSpecFor = do
   describe ("encoding and decoding a " ++ name) $ do
     it "should roundtrip all valid values successfully" $ do
       withMaxSuccess 1000 $ forAllValid @a roundtripped
+
+
+roundtripSpecFor' ::
+  forall a.
+  (Show a, Eq a, Typeable a, GenValid a, ToBuilder a BB.Builder, ParserOf a) =>
+  Spec
+roundtripSpecFor' = do
+  let name = nameOf @a
+  describe ("encoding and decoding a " ++ name) $ do
+    it "should roundtrip all valid values successfully" $ do
+      withMaxSuccess 1000 $ forAllValid @a roundtripped'
