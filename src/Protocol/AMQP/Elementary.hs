@@ -11,7 +11,7 @@
 module Protocol.AMQP.Elementary (
   -- * data types
   DecimalValue (..),
-  ShortString,
+  ShortString (..),
   mkShortString,
   LongString (..),
   Bit (..),
@@ -35,7 +35,7 @@ import Data.ByteString.Builder
 import qualified Data.ByteString.Builder as BB
 import Data.Text (Text)
 import qualified Data.Text.Encoding as Text
-import Data.Validity (Validity (..))
+import Data.Validity (Validity (..), check)
 import Data.Validity.ByteString ()
 import Data.Word (Word16, Word32, Word64, Word8)
 import qualified Protocol.AMQP.Attoparsec as A
@@ -145,7 +145,10 @@ instance ParserOf LongString where
 
 newtype ShortString = ShortString ByteString
   deriving (Eq, Ord, Show)
-  deriving (Validity) via ByteString
+
+
+instance Validity ShortString where
+  validate (ShortString n) = check (BS.length n <= 255) "The 'ShortString' length is <= 255"
 
 
 mkShortString :: Text -> Either Text ShortString
