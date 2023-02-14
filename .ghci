@@ -1,0 +1,4 @@
+-- Pretty printing of it
+import Text.Pretty.Simple
+:def cp (\_ -> return ":set -interactive-print=Text.Pretty.Simple.pPrint")
+:def ncp (\_ -> return ":set -interactive-print=print")
