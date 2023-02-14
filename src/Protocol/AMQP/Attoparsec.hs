@@ -24,8 +24,8 @@ import Data.Attoparsec.ByteString as A
 import Data.Bits
 import qualified Data.ByteString as BS
 import Data.Int (Int16, Int32, Int64, Int8)
-import Data.ReinterpretCast (wordToDouble, wordToFloat)
 import Data.Word (Word16)
+import GHC.Float (castWord32ToFloat, castWord64ToDouble)
 
 
 word16Pre :: (Word16 -> A.Parser a) -> A.Parser a
@@ -74,12 +74,12 @@ anyInt64be = anyIntN' pack
 
 -- | Many any big-endian float.
 anyFloatbe :: Parser Float
-anyFloatbe = wordToFloat <$> anyWord32be
+anyFloatbe = castWord32ToFloat <$> anyWord32be
 
 
--- | Many any big-endian float.
+-- | Many any big-endian double.
 anyDoublebe :: Parser Double
-anyDoublebe = wordToDouble <$> anyWord64be
+anyDoublebe = castWord64ToDouble <$> anyWord64be
 
 
 with1Prefix :: Word16 -> A.Parser a -> A.Parser a
