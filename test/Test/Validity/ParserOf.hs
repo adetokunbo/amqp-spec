@@ -25,7 +25,7 @@ import Test.Validity (GenValid (..), forAllValid)
 import Test.Validity.Utils (nameOf)
 
 
--- like 'roundtripped', but builds the bytes again and compares that this gets
+-- Like 'roundtripped', but builds the bytes again and compares that. This gets
 -- round issues with comparing data structures that contain floats and doubles
 -- that might be NaN and fail the equality test
 roundtripped' :: (Eq a, ToBuilder a BB.Builder, ParserOf a) => a -> Bool
@@ -36,6 +36,7 @@ roundtripped' x =
    in Just bytes == (fmap asBytes $ A.maybeResult parser)
 
 
+-- Encodes and decodes a value and ensures they are equal
 roundtripped :: (Eq a, ToBuilder a BB.Builder, ParserOf a) => a -> Bool
 roundtripped x =
   let parser = A.parse parserOf bytes
@@ -43,6 +44,7 @@ roundtripped x =
    in Just x == A.maybeResult parser
 
 
+-- A spec the uses 'roundtripped' in a property test
 roundtripSpecFor ::
   forall a.
   (Show a, Eq a, Typeable a, GenValid a, ToBuilder a BB.Builder, ParserOf a) =>
@@ -54,6 +56,7 @@ roundtripSpecFor = do
       withMaxSuccess 1000 $ forAllValid @a roundtripped
 
 
+-- A spec the uses 'roundtripped'' in a property test
 roundtripSpecFor' ::
   forall a.
   (Show a, Eq a, Typeable a, GenValid a, ToBuilder a BB.Builder, ParserOf a) =>
