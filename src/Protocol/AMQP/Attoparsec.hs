@@ -5,13 +5,24 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_HADDOCK prune not-home #-}
 
+{- |
+Module      : Protocol.AMQP.Attoparsec
+Copyright   : (c) 2022 Tim Emiola
+Maintainer  : Tim Emiola <adetokunbo@emio.la>
+SPDX-License-Identifier: BSD3
+
+Provides additional Attoparsec parser combinators
+-}
 module Protocol.AMQP.Attoparsec (
+  -- * parse simple types
   anyInt8,
   anyInt16be,
   anyInt32be,
   anyInt64be,
   anyFloatbe,
   anyDoublebe,
+
+  -- * prefixed parsing
   fixed,
   word16Pre,
   with1Prefix,
@@ -28,10 +39,26 @@ import Data.Word (Word16)
 import GHC.Float (castWord32ToFloat, castWord64ToDouble)
 
 
+-- | Match a given @'Word16'@ prefix then apply the prefixed @Parser@.
+with1Prefix :: Word16 -> A.Parser a -> A.Parser a
+with1Prefix pre parser = A.word16be pre *> parser
+
+
+-- | Match 2 given @'Word16'@ prefixes then the apply the corresponding @Parser@.
+with2Prefixes :: Word16 -> [(Word16, A.Parser a)] -> A.Parser a
+with2Prefixes pre prefixedParsers =
+  let matchPres xs = A.choice $ map (\(nextPre, p) -> with1Prefix nextPre p) xs
+   in with1Prefix pre $ matchPres prefixedParsers
+
+
+-- | Match a @'Word16'@ prefix and use it to create a @Parser@.
 word16Pre :: (Word16 -> A.Parser a) -> A.Parser a
 word16Pre f = A.anyWord16be >>= f
 
 
+{- | Match a prefix that indicates the number of bytes that following @Parser@
+ must consume.
+-}
 fixed :: Integral n => n -> A.Parser a -> A.Parser a
 fixed i p = do
   intermediate <- A.take $ fromIntegral i
@@ -80,13 +107,3 @@ anyFloatbe = castWord32ToFloat <$> anyWord32be
 -- | Many any big-endian double.
 anyDoublebe :: Parser Double
 anyDoublebe = castWord64ToDouble <$> anyWord64be
-
-
-with1Prefix :: Word16 -> A.Parser a -> A.Parser a
-with1Prefix pre parser = A.word16be pre *> parser
-
-
-with2Prefixes :: Word16 -> [(Word16, A.Parser a)] -> A.Parser a
-with2Prefixes pre prefixedParsers =
-  let matchPres xs = A.choice $ map (\(nextPre, p) -> with1Prefix nextPre p) xs
-   in with1Prefix pre $ matchPres prefixedParsers

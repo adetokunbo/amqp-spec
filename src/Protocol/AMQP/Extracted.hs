@@ -8,6 +8,16 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_HADDOCK prune not-home #-}
 
+{- |
+Module      : Protocol.AMQP.Extracted
+Copyright   : (c) 2022 Tim Emiola
+Maintainer  : Tim Emiola <adetokunbo@emio.la>
+SPDX-License-Identifier: BSD3
+
+Declares data types that reflect the command definitions declared in the XML
+specification and template haskell functions used to transform them into haskell
+data types and type classes.
+-}
 module Protocol.AMQP.Extracted (
   -- * data types
   ClassInfo (..),
@@ -370,3 +380,42 @@ titleCase xs = xs
 
 capsOf :: String -> String
 capsOf = map toLower . filter isUpper
+
+-- data TrialConfirm -- prefix 85
+--   = SelectOk -- prefix 10
+--   | Select {selectNoWait :: !Bit} -- prefix 11
+--   deriving (Eq, Show)
+
+-- instance ToBuilder TrialConfirm BB.Builder where
+--   toBuilder SelectOk = onlyPrefixes 85 10
+--   toBuilder (Select x) = withPrefixes 85 11 x
+
+-- instance ParserOf TrialConfirm where
+--   parserOf =
+--     matchTwoPrefixes
+--       85
+--       [ (10, pure SelectOk)
+--       , (11, Select <$> parserOf)
+--       ]
+
+-- data DaNackData = DaNackData
+--   { dnDeliveryTag :: !LongLongInt
+--   , dnMultiple :: !Bit
+--   , dnRequeue :: !Bit
+--   }
+--   deriving (Eq, Show)
+
+-- instance ToBuilder DaNackData BB.Builder where
+--   toBuilder x =
+--     mconcat
+--       [ toBuilder (dnDeliveryTag x)
+--       , buildBits [dnMultiple x, dnRequeue x]
+--       ]
+
+-- instance ParserOf DaNackData where
+--   parserOf = do
+--     dnDeliveryTag <- parserOf
+--     packed <- parserOf
+--     let dnMultiple = bitAt packed 0
+--         dnRequeue = bitAt packed 1
+--     pure $ DaNackData {dnMultiple, dnRequeue, dnDeliveryTag}

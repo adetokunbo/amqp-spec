@@ -8,6 +8,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_HADDOCK prune not-home #-}
 
+{- |
+Module      : Protocol.AMQP.FieldValue
+Copyright   : (c) 2022 Tim Emiola
+Maintainer  : Tim Emiola <adetokunbo@emio.la>
+SPDX-License-Identifier: BSD3
+
+Provides types that represent the field values to be used in the content headers
+of Basic command frames
+
+Specifies 'ParserOf' and 'ToBuilder' instances for these types that implement the
+encoding and decoding of these values required by the specification.
+-}
 module Protocol.AMQP.FieldValue (
   -- * data types
   FieldTable (..),
@@ -43,13 +55,6 @@ import GHC.Generics (Generic)
 import qualified Protocol.AMQP.Attoparsec as A
 import Protocol.AMQP.Elementary
 
-
--- newtype Timestamp = Timestamp Word64
---   deriving stock (Eq, Ord, Show)
---   deriving (Num, Real, Integral, Bits, FiniteBits, Enum, Bounded, Read, ParserOf) via Word64
-
--- instance ToBuilder Timestamp BB.Builder where
---   toBuilder (Timestamp x) = word64BE x
 
 newtype FieldTable = FieldTable [(ShortString, FieldValue)]
   deriving (Eq, Show, Generic)
@@ -130,45 +135,6 @@ instance ParserOf FieldValue where
       'x' -> A.anyWord32be >>= fmap FByteArray . A.take . fromIntegral
       x -> fail $ "unknown field type: " ++ show x
 
-
--- data TrialConfirm -- prefix 85
---   = SelectOk -- prefix 10
---   | Select {selectNoWait :: !Bit} -- prefix 11
---   deriving (Eq, Show)
-
--- instance ToBuilder TrialConfirm BB.Builder where
---   toBuilder SelectOk = onlyPrefixes 85 10
---   toBuilder (Select x) = withPrefixes 85 11 x
-
--- instance ParserOf TrialConfirm where
---   parserOf =
---     matchTwoPrefixes
---       85
---       [ (10, pure SelectOk)
---       , (11, Select <$> parserOf)
---       ]
-
--- data DaNackData = DaNackData
---   { dnDeliveryTag :: !LongLongInt
---   , dnMultiple :: !Bit
---   , dnRequeue :: !Bit
---   }
---   deriving (Eq, Show)
-
--- instance ToBuilder DaNackData BB.Builder where
---   toBuilder x =
---     mconcat
---       [ toBuilder (dnDeliveryTag x)
---       , buildBits [dnMultiple x, dnRequeue x]
---       ]
-
--- instance ParserOf DaNackData where
---   parserOf = do
---     dnDeliveryTag <- parserOf
---     packed <- parserOf
---     let dnMultiple = bitAt packed 0
---         dnRequeue = bitAt packed 1
---     pure $ DaNackData {dnMultiple, dnRequeue, dnDeliveryTag}
 
 bitAt :: Word16 -> Int -> Bit
 bitAt x pos = coerce $ testBit x pos
