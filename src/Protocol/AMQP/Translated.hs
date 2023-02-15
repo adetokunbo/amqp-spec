@@ -8,8 +8,8 @@
 
 module Protocol.AMQP.Translated where
 
-import Protocol.AMQP.Extracted (compileXml)
 import Protocol.AMQP.FieldValue
+import Protocol.AMQP.TH (compileXml)
 
 
 compileXml

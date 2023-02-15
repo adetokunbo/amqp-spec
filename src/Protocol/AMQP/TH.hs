@@ -20,20 +20,25 @@ specification.
 -}
 module Protocol.AMQP.TH (
   -- * functions
-  builderInstanceD,
+  compileXml,
+  mkManyClassDecs,
   mkBasicProperties,
+  builderInstanceD,
+
+  -- * construct inner datatypes
+  mkMethodInnerData,
+  mkInnerDataDecl,
   mkInnerDataToBuilderDecs,
   mkParserOfInstance,
-  mkInnerDataDecl,
 
-  -- * construct "BitIndexed" newtypes and instances
+  -- * declare "BitIndexed" newtypes and instances
   newParserOfType,
   bitIndexDecsOf,
   mkBitIndexDecs,
   bitIndexTyInstDecs,
   anyBitIndexedMbConE,
 
-  -- * TH toolkit combinators
+  -- * focussed TH constructors
   sumAdtDec,
   sumAdtDec',
   recordAdtDec,
@@ -42,13 +47,105 @@ module Protocol.AMQP.TH (
 
 import qualified Data.ByteString.Builder as BB
 import Data.Char (toTitle)
+import Data.Foldable (msum)
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import Data.List.Split (splitOn)
+import Data.Word (Word16)
 import Language.Haskell.TH
-import Protocol.AMQP.Attoparsec (word16Pre)
+import Protocol.AMQP.Attoparsec (with2Prefixes, word16Pre)
 import Protocol.AMQP.Bits
+import Protocol.AMQP.Extracted (
+  ClassInfo (..),
+  MethodInfo (..),
+  XMethodInfo (..),
+  extractInfo,
+ )
 import Protocol.AMQP.FieldValue
+
+
+compileXml :: Q [Dec]
+compileXml = do
+  (classInfos, basicPropInfo) <- runIO extractInfo
+  classes <- mkManyClassDecs classInfos
+  basicProps <- mkBasicProperties basicPropInfo
+  pure $ classes <> basicProps
+
+
+asToBuilderDec :: ClassInfo -> Dec
+asToBuilderDec ci =
+  let patExps = map (mkToBuilderPatExp (ciPrefix ci)) (ciMethods ci)
+   in builderInstanceD (pascalCase $ ciName ci) patExps
+
+
+asParserOfExp :: ClassInfo -> Exp
+asParserOfExp ci =
+  let pairsExp = ListE $ map toPairExp $ map asMatchTwoPair $ ciMethods ci
+      toPairExp (x, y) = TupE [Just (LitE $ IntegerL $ toInteger x), Just y]
+      firstApp = AppE (VarE 'with2Prefixes) (LitE $ IntegerL $ toInteger $ ciPrefix ci)
+   in AppE firstApp pairsExp
+
+
+asSumTy :: ClassInfo -> Dec
+asSumTy ci =
+  let sums = map asSumConstr $ ciMethods ci
+   in sumAdtDec' (pascalCase $ ciName ci) sums
+
+
+mkClassDecs :: ClassInfo -> DecsQ
+mkClassDecs ci@ClassInfo {ciMethods = methods} = do
+  let mkInnerD x =
+        if ((length $ miFields $ xmiInfo x) < 2)
+          then pure []
+          else mkInnerDataDecl (xmiDataName x) (xmiDataFields x)
+
+      tyName = pascalCase $ ciName ci
+      sumTy = asSumTy ci
+      parserOfExp = asParserOfExp ci
+      toBuilderDec = asToBuilderDec ci
+  innerTypes <- msum <$> mapM mkInnerD methods
+  parserOfInst <- mkParserOfInstance tyName $ pure parserOfExp
+  pure (sumTy : (innerTypes <> parserOfInst <> [toBuilderDec]))
+
+
+mkManyClassDecs :: [ClassInfo] -> DecsQ
+mkManyClassDecs = fmap msum . mapM mkClassDecs
+
+
+mkMethodInnerData :: XMethodInfo -> DecsQ
+mkMethodInnerData x = mkInnerDataDecl (xmiDataName x) (xmiDataFields x)
+
+
+asSumConstr :: XMethodInfo -> (String, [Name])
+asSumConstr xmi@XMethodInfo {xmiConstrName = con} = case xmiDataFields xmi of
+  [] -> (con, [])
+  [(_, name)] -> (con, [name])
+  _anythingElse -> (con, [mkName $ xmiDataName xmi])
+
+
+mkToBuilderPatExp :: Word16 -> XMethodInfo -> (Pat, Exp)
+mkToBuilderPatExp classPre xmi =
+  let asLit x = LitE $ IntegerL $ toInteger x
+      xName = mkName "x"
+      appClassLit = flip AppE $ asLit classPre
+      appMethodLit = flip AppE $ asLit $ miPrefix $ xmiInfo xmi
+      onlyPrefixesE = appMethodLit $ appClassLit $ VarE 'onlyPrefixes
+      coreWithE = appMethodLit $ appClassLit $ VarE 'withPrefixes
+      withPrefixesE = AppE coreWithE $ VarE xName
+      conName = mkName $ xmiConstrName xmi
+   in case xmiDataFields xmi of
+        [] -> (ConP conName [], onlyPrefixesE)
+        _anythingElse -> (ConP conName [VarP xName], withPrefixesE)
+
+
+asMatchTwoPair :: XMethodInfo -> (Word16, Exp)
+asMatchTwoPair xmi@XMethodInfo {xmiConstrName = con} =
+  let prefix = miPrefix $ xmiInfo xmi
+      conExp = ConE $ mkName con
+      parserExp = case xmiDataFields xmi of
+        [] -> AppE (VarE 'pure) conExp
+        _anythingElse -> InfixE (Just conExp) (VarE '(<$>)) (Just $ VarE 'parserOf)
+   in (prefix, parserExp)
 
 
 mkBitIndexDecs :: [(String, Name)] -> DecsQ
@@ -330,3 +427,42 @@ titleCaseTail y = y
 titleCase :: String -> String
 titleCase (x : xs) = toTitle x : xs
 titleCase xs = xs
+
+-- data TrialConfirm -- prefix 85
+--   = SelectOk -- prefix 10
+--   | Select {selectNoWait :: !Bit} -- prefix 11
+--   deriving (Eq, Show)
+
+-- instance ToBuilder TrialConfirm BB.Builder where
+--   toBuilder SelectOk = onlyPrefixes 85 10
+--   toBuilder (Select x) = withPrefixes 85 11 x
+
+-- instance ParserOf TrialConfirm where
+--   parserOf =
+--     matchTwoPrefixes
+--       85
+--       [ (10, pure SelectOk)
+--       , (11, Select <$> parserOf)
+--       ]
+
+-- data DaNackData = DaNackData
+--   { dnDeliveryTag :: !LongLongInt
+--   , dnMultiple :: !Bit
+--   , dnRequeue :: !Bit
+--   }
+--   deriving (Eq, Show)
+
+-- instance ToBuilder DaNackData BB.Builder where
+--   toBuilder x =
+--     mconcat
+--       [ toBuilder (dnDeliveryTag x)
+--       , buildBits [dnMultiple x, dnRequeue x]
+--       ]
+
+-- instance ParserOf DaNackData where
+--   parserOf = do
+--     dnDeliveryTag <- parserOf
+--     packed <- parserOf
+--     let dnMultiple = bitAt packed 0
+--         dnRequeue = bitAt packed 1
+--     pure $ DaNackData {dnMultiple, dnRequeue, dnDeliveryTag}

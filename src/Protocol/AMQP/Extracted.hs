@@ -19,32 +19,24 @@ specification and template haskell functions used to transform them into haskell
 data types and type classes.
 -}
 module Protocol.AMQP.Extracted (
-  -- * data types
+  -- * Types reflecting the XML spec metadata
   ClassInfo (..),
   MethodInfo (..),
   XMethodInfo (..),
   FieldInfo (..),
 
-  -- * functions
-  compileXml,
-  mkClassDecs,
-  mkManyClassDecs,
-  mkMethodInnerData,
-  xmlSpecPath,
-  loadBasicPropInfo,
+  -- * parsing the spec 
+  extractInfo,
   loadClassInfos,
   loadXml,
-  isDomain,
-  nameAndType,
-  toClassInfos,
-  asSumTy,
-  module Text.XML.Light,
+
+  -- * constants
+  xmlSpecPath,
 ) where
 
 import Control.Applicative ((<|>))
 import qualified Data.ByteString as BS
 import Data.Char (isUpper, toLower, toTitle)
-import Data.Foldable (msum)
 import Data.List.Split (splitOn)
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
@@ -53,35 +45,13 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Word (Word16)
 import Language.Haskell.TH
 import Paths_amqp_compiled
-import Protocol.AMQP.Attoparsec (with2Prefixes)
 import Protocol.AMQP.FieldValue
-import Protocol.AMQP.TH (
-  builderInstanceD,
-  mkBasicProperties,
-  mkInnerDataDecl,
-  mkParserOfInstance,
-  sumAdtDec',
- )
 import Text.Read (readMaybe)
 import Text.XML.Light
 
 
-compileXml' :: Q [Dec]
-compileXml' = do
-  xs <- runIO loadClassInfos
-  mkManyClassDecs xs
-
-
-compileXml :: Q [Dec]
-compileXml = do
-  (classInfos, basicPropInfo) <- runIO loadCompilerInfo
-  classes <- mkManyClassDecs classInfos
-  basicProps <- mkBasicProperties basicPropInfo
-  pure $ classes <> basicProps
-
-
-loadCompilerInfo :: IO ([ClassInfo], [(String, Name)])
-loadCompilerInfo = do
+extractInfo :: IO ([ClassInfo], [(String, Name)])
+extractInfo = do
   xmlDoc <- (parseXMLDoc <$> loadXml)
   let classInfos = maybe [] toClassInfos xmlDoc
       basicPropInfo = maybe [] toBasicPropInfo xmlDoc
@@ -92,17 +62,12 @@ specPath :: FilePath
 specPath = "spec/amqp0-9-1.xml"
 
 
-readXml' :: FilePath -> IO Text
-readXml' = fmap decodeUtf8 . BS.readFile
+readXml :: FilePath -> IO Text
+readXml = fmap decodeUtf8 . BS.readFile
 
 
 xmlSpecPath :: IO FilePath
 xmlSpecPath = getDataFileName specPath
-
-
-loadBasicPropInfo :: IO [(String, Name)]
-loadBasicPropInfo = do
-  (parseXMLDoc <$> loadXml) >>= pure . maybe [] toBasicPropInfo
 
 
 toBasicPropInfo :: Element -> [(String, Name)]
@@ -125,11 +90,7 @@ loadClassInfos = (parseXMLDoc <$> loadXml) >>= pure . maybe [] toClassInfos
 
 
 loadXml :: IO Text
-loadXml = xmlSpecPath >>= readXml'
-
-
-isDomain :: QName -> Bool
-isDomain = (== "domain") . qName
+loadXml = xmlSpecPath >>= readXml
 
 
 nameAndType :: Element -> Maybe (String, Name)
@@ -166,51 +127,6 @@ instance FromElement ClassInfo where
           Just x -> pure $ map (xMethodInfo x) theMethods
         theMethods = selectAll "method" (flip fromElement xs) e
      in ClassInfo <$> ciName <*> ciPrefix <*> ciLabel <*> ciMethods
-
-
-asToBuilderDec :: ClassInfo -> Dec
-asToBuilderDec ci =
-  let patExps = map (mkToBuilderPatExp (ciPrefix ci)) (ciMethods ci)
-   in builderInstanceD (pascalCase $ ciName ci) patExps
-
-
-asParserOfExp :: ClassInfo -> Exp
-asParserOfExp ci =
-  let pairsExp = mkMatchTwoPairList $ map asMatchTwoPair $ ciMethods ci
-      firstApp = AppE (VarE 'with2Prefixes) (LitE $ IntegerL $ toInteger $ ciPrefix ci)
-   in AppE firstApp pairsExp
-
-
-mkMatchTwoPairList :: [(Word16, Exp)] -> Exp
-mkMatchTwoPairList pairs =
-  let toPairExp (x, y) = TupE [Just (LitE $ IntegerL $ toInteger x), Just y]
-   in ListE $ map toPairExp pairs
-
-
-asSumTy :: ClassInfo -> Dec
-asSumTy ci =
-  let sums = map asSumConstr $ ciMethods ci
-   in sumAdtDec' (pascalCase $ ciName ci) sums
-
-
-mkClassDecs :: ClassInfo -> DecsQ
-mkClassDecs ci@ClassInfo {ciMethods = methods} = do
-  let mkInnerD x =
-        if ((length $ miFields $ xmiInfo x) < 2)
-          then pure []
-          else mkInnerDataDecl (xmiDataName x) (xmiDataFields x)
-
-      tyName = pascalCase $ ciName ci
-      sumTy = asSumTy ci
-      parserOfExp = asParserOfExp ci
-      toBuilderDec = asToBuilderDec ci
-  innerTypes <- msum <$> mapM mkInnerD methods
-  parserOfInst <- mkParserOfInstance tyName $ pure parserOfExp
-  pure (sumTy : (innerTypes <> parserOfInst <> [toBuilderDec]))
-
-
-mkManyClassDecs :: [ClassInfo] -> DecsQ
-mkManyClassDecs = fmap msum . mapM mkClassDecs
 
 
 data MethodInfo = MethodInfo
@@ -254,42 +170,6 @@ data XMethodInfo = XMethodInfo
   , xmiDataFields :: ![(String, Name)]
   }
   deriving (Eq, Show)
-
-
-mkMethodInnerData :: XMethodInfo -> DecsQ
-mkMethodInnerData x = mkInnerDataDecl (xmiDataName x) (xmiDataFields x)
-
-
-asSumConstr :: XMethodInfo -> (String, [Name])
-asSumConstr xmi@XMethodInfo {xmiConstrName = con} = case xmiDataFields xmi of
-  [] -> (con, [])
-  [(_, name)] -> (con, [name])
-  _anythingElse -> (con, [mkName $ xmiDataName xmi])
-
-
-mkToBuilderPatExp :: Word16 -> XMethodInfo -> (Pat, Exp)
-mkToBuilderPatExp classPre xmi =
-  let asLit x = LitE $ IntegerL $ toInteger x
-      xName = mkName "x"
-      appClassLit = flip AppE $ asLit classPre
-      appMethodLit = flip AppE $ asLit $ miPrefix $ xmiInfo xmi
-      onlyPrefixesE = appMethodLit $ appClassLit $ VarE 'onlyPrefixes
-      coreWithE = appMethodLit $ appClassLit $ VarE 'withPrefixes
-      withPrefixesE = AppE coreWithE $ VarE xName
-      conName = mkName $ xmiConstrName xmi
-   in case xmiDataFields xmi of
-        [] -> (ConP conName [], onlyPrefixesE)
-        _anythingElse -> (ConP conName [VarP xName], withPrefixesE)
-
-
-asMatchTwoPair :: XMethodInfo -> (Word16, Exp)
-asMatchTwoPair xmi@XMethodInfo {xmiConstrName = con} =
-  let prefix = miPrefix $ xmiInfo xmi
-      conExp = ConE $ mkName con
-      parserExp = case xmiDataFields xmi of
-        [] -> AppE (VarE 'pure) conExp
-        _anythingElse -> InfixE (Just conExp) (VarE '(<$>)) (Just $ VarE 'parserOf)
-   in (prefix, parserExp)
 
 
 data FieldInfo = FieldInfo
@@ -386,42 +266,3 @@ titleCase xs = xs
 
 capsOf :: String -> String
 capsOf = map toLower . filter isUpper
-
--- data TrialConfirm -- prefix 85
---   = SelectOk -- prefix 10
---   | Select {selectNoWait :: !Bit} -- prefix 11
---   deriving (Eq, Show)
-
--- instance ToBuilder TrialConfirm BB.Builder where
---   toBuilder SelectOk = onlyPrefixes 85 10
---   toBuilder (Select x) = withPrefixes 85 11 x
-
--- instance ParserOf TrialConfirm where
---   parserOf =
---     matchTwoPrefixes
---       85
---       [ (10, pure SelectOk)
---       , (11, Select <$> parserOf)
---       ]
-
--- data DaNackData = DaNackData
---   { dnDeliveryTag :: !LongLongInt
---   , dnMultiple :: !Bit
---   , dnRequeue :: !Bit
---   }
---   deriving (Eq, Show)
-
--- instance ToBuilder DaNackData BB.Builder where
---   toBuilder x =
---     mconcat
---       [ toBuilder (dnDeliveryTag x)
---       , buildBits [dnMultiple x, dnRequeue x]
---       ]
-
--- instance ParserOf DaNackData where
---   parserOf = do
---     dnDeliveryTag <- parserOf
---     packed <- parserOf
---     let dnMultiple = bitAt packed 0
---         dnRequeue = bitAt packed 1
---     pure $ DaNackData {dnMultiple, dnRequeue, dnDeliveryTag}
