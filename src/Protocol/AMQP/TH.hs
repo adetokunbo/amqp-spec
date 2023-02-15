@@ -7,23 +7,37 @@
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_HADDOCK prune not-home #-}
 
+{- |
+Module      : Protocol.AMQP.TH
+Copyright   : (c) 2022 Tim Emiola
+Maintainer  : Tim Emiola <adetokunbo@emio.la>
+SPDX-License-Identifier: BSD3
+
+Defines @Template Haskell@ combinators used to transform the XML representation
+of commands into Haskell data types with instances of 'ParserOf' and 'ToBuilder'
+that allow them to encoded and decoded from a byte stream in accordance with the
+specification.
+-}
 module Protocol.AMQP.TH (
   -- * functions
   builderInstanceD,
-  camelCase,
+  mkBasicProperties,
+  mkInnerDataToBuilderDecs,
+  mkParserOfInstance,
+  mkInnerDataDecl,
+
+  -- * construct "BitIndexed" newtypes and instances
+  newParserOfType,
   bitIndexDecsOf,
   mkBitIndexDecs,
-  mkBasicProperties,
-  mkParserOfInstance,
-  mkInnerDataToBuilderDecs,
-  newParserOfType,
   bitIndexTyInstDecs,
   anyBitIndexedMbConE,
+
+  -- * TH toolkit combinators
   sumAdtDec,
   sumAdtDec',
   recordAdtDec,
   recordAdtDec',
-  mkInnerDataDecl,
 ) where
 
 import qualified Data.ByteString.Builder as BB
