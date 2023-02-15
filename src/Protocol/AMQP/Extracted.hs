@@ -55,7 +55,13 @@ import Language.Haskell.TH
 import Paths_amqp_compiled
 import Protocol.AMQP.Attoparsec (with2Prefixes)
 import Protocol.AMQP.FieldValue
-import Protocol.AMQP.TH
+import Protocol.AMQP.TH (
+  builderInstanceD,
+  mkBasicProperties,
+  mkInnerDataDecl,
+  mkParserOfInstance,
+  sumAdtDec',
+ )
 import Text.Read (readMaybe)
 import Text.XML.Light
 
