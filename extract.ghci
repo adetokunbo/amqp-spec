@@ -2,4 +2,4 @@
 :reload Protocol.AMQP.Extracted
 import Language.Haskell.TH
 import Protocol.AMQP.Extracted
-classInfos <- loadClassInfos
+(classInfos, basicInfo) <- extractInfo
