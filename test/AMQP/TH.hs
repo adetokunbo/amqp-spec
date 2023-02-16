@@ -8,6 +8,7 @@ SPDX-License-Identifier: BSD3
 -}
 module AMQP.TH (
   compileDerivingDecs,
+  compileRoundTripSpecDecs,
 ) where
 
 import Data.Char (toTitle)
@@ -17,9 +18,11 @@ import Data.Maybe (catMaybes)
 import Language.Haskell.TH (
   Dec (StandaloneDerivD),
   DerivStrategy (AnyclassStrategy),
+  Exp (..),
   Name,
   Q,
-  Type (AppT, ConT),
+  Stmt (..),
+  Type (..),
   mkName,
   runIO,
  )
@@ -29,21 +32,35 @@ import Protocol.AMQP.Extracted (
   XMethodInfo (..),
   extractInfo,
  )
+import Test.Validity.ParserOf (roundtripSpecFor')
+
+
+compileRoundTripSpecDecs :: Q Exp
+compileRoundTripSpecDecs = do
+  (classInfos, _basicPropInfo) <- runIO extractInfo
+  pure $ DoE $ map genRoundtripStmt $ concatMap derivDataTypeNamesOf classInfos
+
+
+genRoundtripStmt :: Name -> Stmt
+genRoundtripStmt x = NoBindS $ AppTypeE (VarE 'roundtripSpecFor') $ ConT x
 
 
 compileDerivingDecs :: Q [Dec]
 compileDerivingDecs = do
   (classInfos, _basicPropInfo) <- runIO extractInfo
-  let innerDataNameOf x | length (miFields $ xmiInfo x) < 2 = Nothing
-      innerDataNameOf x = Just $ xmiDataName x
-      innerDataNames = catMaybes . map innerDataNameOf . ciMethods
-      derivingNamesOf x = pascalCase (ciName x) : innerDataNames x
-      decs = map (genvalidDeriv . mkName) $ concatMap derivingNamesOf classInfos
-  pure decs
+  pure $ map genvalidDeriv $ concatMap derivDataTypeNamesOf classInfos
 
 
 genvalidDeriv :: Name -> Dec
 genvalidDeriv x = StandaloneDerivD (Just AnyclassStrategy) [] $ AppT (ConT ''GenValid) (ConT x)
+
+
+derivDataTypeNamesOf :: ClassInfo -> [Name]
+derivDataTypeNamesOf ci =
+  let innerDataNameOf x | length (miFields $ xmiInfo x) < 2 = Nothing
+      innerDataNameOf x = Just $ xmiDataName x
+      innerDataNames = catMaybes . map innerDataNameOf . ciMethods
+   in map mkName $ pascalCase (ciName ci) : innerDataNames ci
 
 
 pascalCase :: String -> String
