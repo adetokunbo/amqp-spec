@@ -5,6 +5,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# OPTIONS_HADDOCK prune not-home #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 {- |
 Module      : AMQP.OrphanInstances
@@ -22,8 +23,9 @@ import Data.Word (Word16, Word32, Word64, Word8)
 import GHC.Generics (Generic)
 import Protocol.AMQP.Elementary
 import Protocol.AMQP.FieldValue
+import Protocol.AMQP.Translated
 import Test.Validity.ParserOf (GenValid (..), suchThat)
-
+import AMQP.TH
 
 deriving via Bool instance GenValid Bit
 
@@ -57,3 +59,6 @@ deriving instance Generic ShortString
 
 instance GenValid ShortString where
   genValid = ShortString <$> (genValid `suchThat` (\x -> BS.length x <= 255))
+
+
+compileDerivingDecs

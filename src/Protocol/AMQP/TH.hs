@@ -321,7 +321,8 @@ recordAdtDec typeName fields =
 sumTypeD :: String -> [(String, [Name])] -> Dec
 sumTypeD typeName xs =
   let constrs = map (\(x, y) -> (mkName x, map ConT y)) xs
-   in DataD [] (mkName typeName) [] Nothing (fmap (uncurry sumCon) constrs) []
+      derivs = [eqShowGenDeriv, validityDeriv]
+   in DataD [] (mkName typeName) [] Nothing (fmap (uncurry sumCon) constrs) derivs
 
 
 applicativeConE :: Name -> NonEmpty Exp -> Exp
