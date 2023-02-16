@@ -17,7 +17,7 @@ import Data.List.Split (splitOn)
 import Data.Maybe (catMaybes)
 import Language.Haskell.TH (
   Dec (StandaloneDerivD),
-  DerivStrategy (AnyclassStrategy),
+  DerivStrategy (..),
   Exp (..),
   Name,
   Q,
@@ -30,6 +30,7 @@ import Protocol.AMQP.Extracted (
   ClassInfo (..),
   MethodInfo (..),
   XMethodInfo (..),
+  basicName,
   extractInfo,
  )
 import Test.Validity.ParserOf (roundtripSpecFor')
@@ -37,8 +38,10 @@ import Test.Validity.ParserOf (roundtripSpecFor')
 
 compileRoundTripSpecDecs :: Q Exp
 compileRoundTripSpecDecs = do
-  (classInfos, _basicPropInfo) <- runIO extractInfo
-  pure $ DoE $ map genRoundtripStmt $ concatMap derivDataTypeNamesOf classInfos
+  (classInfos, _basicHdrTyInfo) <- runIO extractInfo
+  let commandTypes = concatMap derivDataTypeNamesOf classInfos
+      basicHdrTypes = map mkName $ basicName : map (pascalCase . fst) _basicHdrTyInfo
+  pure $ DoE $ map genRoundtripStmt $ commandTypes <> basicHdrTypes
 
 
 genRoundtripStmt :: Name -> Stmt
@@ -47,12 +50,21 @@ genRoundtripStmt x = NoBindS $ AppTypeE (VarE 'roundtripSpecFor') $ ConT x
 
 compileDerivingDecs :: Q [Dec]
 compileDerivingDecs = do
-  (classInfos, _basicPropInfo) <- runIO extractInfo
-  pure $ map genvalidDeriv $ concatMap derivDataTypeNamesOf classInfos
+  (classInfos, basicHdrTyInfo) <- runIO extractInfo
+  let commandTypes = concatMap derivDataTypeNamesOf classInfos
+      commandDecs = map genvalidDeriv $ (mkName basicName) : commandTypes
+      basicHdrDecs = map (uncurry genvalidViaDeriv) basicHdrTyInfo
+  pure $ commandDecs <> basicHdrDecs
 
 
 genvalidDeriv :: Name -> Dec
 genvalidDeriv x = StandaloneDerivD (Just AnyclassStrategy) [] $ AppT (ConT ''GenValid) (ConT x)
+
+
+genvalidViaDeriv :: String -> Name -> Dec
+genvalidViaDeriv x origTy =
+  let theInstance = AppT (ConT ''GenValid) $ ConT $ mkName $ pascalCase x
+   in StandaloneDerivD (Just (ViaStrategy $ ConT origTy)) [] theInstance
 
 
 derivDataTypeNamesOf :: ClassInfo -> [Name]
