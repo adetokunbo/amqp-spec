@@ -127,7 +127,7 @@ asMatchTwoPair xmi@XMethodInfo {xmiConstrName = con} =
 
 mkBitIndexDecs :: [(String, Name)] -> DecsQ
 mkBitIndexDecs fields =
-  let indexed = zip [1 ..] fields
+  let indexed = zip [0 ..] fields
       mk (pos, (raw, original)) = bitIndexDecsOf (pascalCase raw) pos original
    in fmap concat $ traverse mk indexed
 
