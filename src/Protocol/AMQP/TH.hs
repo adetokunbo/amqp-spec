@@ -42,7 +42,9 @@ import Data.Foldable (msum)
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import Data.List.Split (splitOn)
+import Data.Validity (Validity (..))
 import Data.Word (Word16)
+import GHC.Generics (Generic)
 import Language.Haskell.TH
 import Protocol.AMQP.Attoparsec (with2Prefixes, word16Pre)
 import Protocol.AMQP.Bits
@@ -215,7 +217,7 @@ justCanBuildConE argName funcName =
 
 bitIndexDecsOf :: String -> Integer -> Name -> DecsQ
 bitIndexDecsOf wrapperName pos original = do
-  let x = newTypeDerivingD wrapperName original [''ParserOf]
+  let x = newTypeDerivingD wrapperName original [''ParserOf, ''Validity]
       z = builderForNewTyDecs wrapperName
   y <- bitIndexTyInstDecs wrapperName pos
   pure $ x : z : y
@@ -307,13 +309,13 @@ recordAdtDec' typeName xs =
   let fields = map (\(x, y) -> (mkName x, ConT y)) xs
       tyName = mkName typeName
       con = RecC tyName $ (\(name, t) -> (name, fieldBang, t)) <$> fields
-   in DataD [] tyName [] Nothing [con] [eqShowDeriv]
+   in DataD [] tyName [] Nothing [con] [eqShowGenDeriv, validityDeriv]
 
 
 recordAdtDec :: Name -> [(Name, Type)] -> Dec
 recordAdtDec typeName fields =
   let con = RecC typeName $ (\(name, t) -> (name, fieldBang, t)) <$> fields
-   in DataD [] typeName [] Nothing [con] [eqShowDeriv]
+   in DataD [] typeName [] Nothing [con] [eqShowGenDeriv, validityDeriv]
 
 
 sumTypeD :: String -> [(String, [Name])] -> Dec
@@ -348,6 +350,14 @@ newTypeDerivingD wrapperName original xs =
 
 eqShowDeriv :: DerivClause
 eqShowDeriv = DerivClause (Just StockStrategy) (map ConT [''Eq, ''Show])
+
+
+eqShowGenDeriv :: DerivClause
+eqShowGenDeriv = DerivClause (Just StockStrategy) (map ConT [''Eq, ''Show, ''Generic])
+
+
+validityDeriv :: DerivClause
+validityDeriv = DerivClause (Just AnyclassStrategy) [ConT ''Validity]
 
 
 sumCon :: Name -> [Type] -> Con
