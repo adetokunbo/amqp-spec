@@ -204,7 +204,7 @@ mkBuildBasicHdrType fieldNames =
   let nameX = mkName "x"
       justCanBuildOf = justCanBuildConE nameX . camelCase . ("bh-" ++)
       accessors = map (\(x, _y) -> justCanBuildOf x) fieldNames
-      applyBuildWithPrefix xs = AppE (VarE 'buildWithPrefix) $ ListE xs
+      applyBuildWithPrefix xs = AppE (VarE 'withBitIndexPrefix) $ ListE xs
    in builderInstanceD basicName [(VarP nameX, applyBuildWithPrefix accessors)]
 
 
