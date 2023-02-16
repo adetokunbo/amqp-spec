@@ -31,6 +31,7 @@ module Protocol.AMQP.Extracted (
   loadXml,
 
   -- * constants
+  basicName,
   xmlSpecPath,
 ) where
 
@@ -49,6 +50,11 @@ import Protocol.AMQP.FieldValue
 import Text.Read (readMaybe)
 import Text.XML.Light
 
+
+
+
+basicName :: String
+basicName = "BasicHdr"
 
 extractInfo :: IO ([ClassInfo], [(String, Name)])
 extractInfo = do

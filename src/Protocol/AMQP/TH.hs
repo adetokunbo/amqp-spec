@@ -23,7 +23,8 @@ module Protocol.AMQP.TH (
   compileXml,
 
   -- * construct inner datatypes
-  mkBasicProperties,
+  basicName,
+  mkBasicHdrType,
   builderInstanceD,
   mkInnerDataDecl,
   parserOfInstanceD,
@@ -52,6 +53,7 @@ import Protocol.AMQP.Extracted (
   ClassInfo (..),
   MethodInfo (..),
   XMethodInfo (..),
+  basicName,
   extractInfo,
  )
 import Protocol.AMQP.FieldValue
@@ -59,10 +61,10 @@ import Protocol.AMQP.FieldValue
 
 compileXml :: Q [Dec]
 compileXml = do
-  (classInfos, basicPropInfo) <- runIO extractInfo
+  (classInfos, basicHdrTyInfo) <- runIO extractInfo
   classes <- fmap msum $ mapM mkClassDecs classInfos
-  basicProps <- mkBasicProperties basicPropInfo
-  pure $ classes <> basicProps
+  basicHdrs <- mkBasicHdrType basicHdrTyInfo
+  pure $ classes <> basicHdrs
 
 
 asParserOfExp :: ClassInfo -> Exp
@@ -130,29 +132,29 @@ mkBitIndexDecs fields =
    in fmap concat $ traverse mk indexed
 
 
-{- | Generates the BasicProperties data definition
+{- | Generates the BasicHdr data definition
 
-data BasicProperties = BasicProperties {
-  bpField1 :: !(Maybe NewtypeForField1)
-  bpField2 :: !(Maybe NewtypeForField2)
+data BasicHdr = BasicHdr {
+  bhField1 :: !(Maybe NewtypeForField1)
+  bhField2 :: !(Maybe NewtypeForField2)
   ...
-  bpFieldN :: !(Maybe NewtypeForFieldN)
+  bhFieldN :: !(Maybe NewtypeForFieldN)
 }
 
-Every field in BasicProperties has a type that is a newtype registered with a BitIndex
+Every field in BasicHdr has a type that is a newtype registered with a BitIndex
 -}
-mkBasicProperties :: [(String, Name)] -> DecsQ
-mkBasicProperties fieldNames =
+mkBasicHdrType :: [(String, Name)] -> DecsQ
+mkBasicHdrType fields =
   let mkBasicFields = map asField
       asField (x, _y) = (nameOf x, typeOf x)
-      nameOf = mkName . camelCase . ("bp-" ++)
+      nameOf = mkName . camelCase . ("bh-" ++)
       typeOf = maybeOf . mkName . pascalCase
       maybeOf x = AppT (ConT ''Maybe) (ConT x)
-      mainRec = recordAdtDec (mkName "BasicProperties") (mkBasicFields fieldNames)
-      builderDec = mkBuildBasicProperties fieldNames
+      mainRec = recordAdtDec (mkName basicName) (mkBasicFields fields)
+      builderDec = mkBuildBasicHdrType fields
    in do
-        bitIndexDecs <- mkBitIndexDecs fieldNames
-        parserDecs <- mkParseBasicProperties fieldNames
+        bitIndexDecs <- mkBitIndexDecs fields
+        parserDecs <- mkParseBasicHdrType fields
         pure $ bitIndexDecs <> [mainRec] <> [builderDec] <> parserDecs
 
 
@@ -180,13 +182,12 @@ groupBitFields =
    in NE.groupBy grouper
 
 
-mkParseBasicProperties :: [(String, Name)] -> DecsQ
-mkParseBasicProperties fieldNames = do
+mkParseBasicHdrType :: [(String, Name)] -> DecsQ
+mkParseBasicHdrType fieldNames = do
   let argCount = length fieldNames
-      instanceName = "BasicProperties"
       withWord16Pre f = pure $ AppE (VarE 'word16Pre) f
-  constrExp <- anyBitIndexedMbConE (mkName instanceName) argCount
-  parserOfInstanceD instanceName $ withWord16Pre constrExp
+  constrExp <- anyBitIndexedMbConE (mkName basicName) argCount
+  parserOfInstanceD basicName $ withWord16Pre constrExp
 
 
 -- fail if argCount < 2 ??
@@ -198,13 +199,13 @@ anyBitIndexedMbConE constrName argCount = do
   pure $ LamE [VarP x] $ applicativeConE constrName invs
 
 
-mkBuildBasicProperties :: [(String, Name)] -> Dec
-mkBuildBasicProperties fieldNames =
+mkBuildBasicHdrType :: [(String, Name)] -> Dec
+mkBuildBasicHdrType fieldNames =
   let nameX = mkName "x"
-      justCanBuildOf = justCanBuildConE nameX . camelCase . ("bp-" ++)
+      justCanBuildOf = justCanBuildConE nameX . camelCase . ("bh-" ++)
       accessors = map (\(x, _y) -> justCanBuildOf x) fieldNames
       applyBuildWithPrefix xs = AppE (VarE 'buildWithPrefix) $ ListE xs
-   in builderInstanceD "BasicProperties" [(VarP nameX, applyBuildWithPrefix accessors)]
+   in builderInstanceD basicName [(VarP nameX, applyBuildWithPrefix accessors)]
 
 
 justCanBuildConE :: Name -> String -> Exp
