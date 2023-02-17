@@ -47,7 +47,7 @@ import Data.Validity (Validity (..))
 import Data.Word (Word16)
 import GHC.Generics (Generic)
 import Language.Haskell.TH
-import Protocol.AMQP.Attoparsec (with2Prefixes, word16Pre)
+import Protocol.AMQP.Attoparsec (choice, with2Prefixes, word16Pre)
 import Protocol.AMQP.Bits
 import Protocol.AMQP.Extracted (
   ClassInfo (..),
@@ -55,6 +55,7 @@ import Protocol.AMQP.Extracted (
   XMethodInfo (..),
   basicName,
   extractInfo,
+  methodName,
  )
 import Protocol.AMQP.FieldValue
 
@@ -64,7 +65,8 @@ compileXml = do
   (classInfos, basicHdrTyInfo) <- runIO extractInfo
   classes <- fmap msum $ mapM mkClassDecs classInfos
   basicHdrs <- mkBasicHdrType basicHdrTyInfo
-  pure $ classes <> basicHdrs
+  let methodDecs = methodSumTyDecs classInfos
+  pure $ methodDecs <> classes <> basicHdrs
 
 
 asParserOfExp :: ClassInfo -> Exp
@@ -73,6 +75,20 @@ asParserOfExp ci =
       toPairExp (x, y) = TupE [Just (LitE $ IntegerL $ toInteger x), Just y]
       firstApp = AppE (VarE 'with2Prefixes) (LitE $ IntegerL $ toInteger $ ciPrefix ci)
    in AppE firstApp pairsExp
+
+
+methodSumTyDecs :: [ClassInfo] -> [Dec]
+methodSumTyDecs classInfos =
+  let ci2sumTy ci = (ciSumTyName ci, [mkName $ pascalCase $ ciName ci])
+      conName ci = mkName $ ciSumTyName ci
+      parserOfExp ci = AppE (AppE (VarE 'fmap) (ConE $ conName ci)) (VarE 'parserOf)
+      sumTyDec = sumTypeD methodName $ map ci2sumTy classInfos
+      parserOfExps = parserOfExp <$> classInfos
+      parserOfDec = parserOfInstanceD' methodName $ AppE (VarE 'choice) $ ListE parserOfExps
+      toBuilderDec = builderInstanceD methodName $ toBuilderPatExp <$> classInfos
+      toBuilderOfX = AppE (VarE 'toBuilder) (VarE xAsVar)
+      toBuilderPatExp ci = (ConP (conName ci) [VarP xAsVar], toBuilderOfX)
+   in [sumTyDec, parserOfDec, toBuilderDec]
 
 
 mkClassDecs :: ClassInfo -> DecsQ
@@ -372,6 +388,10 @@ fieldBang = Bang NoSourceUnpackedness SourceStrict
 
 emptyBang :: Bang
 emptyBang = Bang NoSourceUnpackedness NoSourceStrictness
+
+
+xAsVar :: Name
+xAsVar = mkName "x"
 
 
 camelCase :: String -> String

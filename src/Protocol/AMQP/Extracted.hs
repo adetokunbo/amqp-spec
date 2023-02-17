@@ -15,23 +15,23 @@ Maintainer  : Tim Emiola <adetokunbo@emio.la>
 SPDX-License-Identifier: BSD3
 
 Declares data types that reflect the command definitions declared in the XML
-specification and template haskell functions used to transform them into haskell
-data types and type classes.
+specification and combinators for parsing them the XML specification.
 -}
 module Protocol.AMQP.Extracted (
-  -- * Types reflecting the XML spec metadata
+  -- * Reflect the command metadata from the XML spec
   ClassInfo (..),
+  FieldInfo (..),
   MethodInfo (..),
   XMethodInfo (..),
-  FieldInfo (..),
 
-  -- * parsing the spec 
+  -- * parse the spec
   extractInfo,
   loadClassInfos,
   loadXml,
 
-  -- * constants
+  -- * constants and naming
   basicName,
+  methodName,
   xmlSpecPath,
 ) where
 
@@ -44,28 +44,31 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
 import Data.Word (Word16)
-import Language.Haskell.TH
+import Language.Haskell.TH (Name)
 import Paths_amqp_compiled
 import Protocol.AMQP.FieldValue
 import Text.Read (readMaybe)
 import Text.XML.Light
 
 
+methodName :: String
+methodName = "Method"
 
 
 basicName :: String
 basicName = "BasicHdr"
 
+
+specPath :: FilePath
+specPath = "spec/amqp0-9-1.xml"
+
+
 extractInfo :: IO ([ClassInfo], [(String, Name)])
 extractInfo = do
   xmlDoc <- (parseXMLDoc <$> loadXml)
   let classInfos = maybe [] toClassInfos xmlDoc
-      basicPropInfo = maybe [] toBasicPropInfo xmlDoc
+      basicPropInfo = maybe [] toBasicHdrInfo xmlDoc
   pure (classInfos, basicPropInfo)
-
-
-specPath :: FilePath
-specPath = "spec/amqp0-9-1.xml"
 
 
 readXml :: FilePath -> IO Text
@@ -76,8 +79,8 @@ xmlSpecPath :: IO FilePath
 xmlSpecPath = getDataFileName specPath
 
 
-toBasicPropInfo :: Element -> [(String, Name)]
-toBasicPropInfo el =
+toBasicHdrInfo :: Element -> [(String, Name)]
+toBasicHdrInfo el =
   let go = selectAll "field" nameAndDomain
       isBasicClass e = (qName $ elName e) == "class" && attrNamed "name" e == Just "basic"
    in maybe [] go $ filterElement isBasicClass el
@@ -119,20 +122,23 @@ data ClassInfo = ClassInfo
   , ciPrefix :: !Word16
   , ciLabel :: !String
   , ciMethods :: ![XMethodInfo]
+  , ciSumTyName :: !String
   }
   deriving (Eq, Show)
 
 
 instance FromElement ClassInfo where
   fromElement e xs =
-    let ciName = nameAttr e
+    let sumNameOf = pascalCase . ("modus-" ++)
+        ciName = nameAttr e
+        ciSumTyName = sumNameOf <$> ciName
         ciPrefix = prefixAttr' e
         ciLabel = labelAttr e
         ciMethods = case ciName of
           Nothing -> pure []
           Just x -> pure $ map (xMethodInfo x) theMethods
         theMethods = selectAll "method" (flip fromElement xs) e
-     in ClassInfo <$> ciName <*> ciPrefix <*> ciLabel <*> ciMethods
+     in ClassInfo <$> ciName <*> ciPrefix <*> ciLabel <*> ciMethods <*> ciSumTyName
 
 
 data MethodInfo = MethodInfo
