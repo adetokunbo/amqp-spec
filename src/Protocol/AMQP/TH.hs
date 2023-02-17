@@ -47,7 +47,7 @@ import Data.Validity (Validity (..))
 import Data.Word (Word16)
 import GHC.Generics (Generic)
 import Language.Haskell.TH
-import Protocol.AMQP.Attoparsec (with2Prefixes, word16Pre)
+import Protocol.AMQP.Attoparsec (choice, with2Prefixes, word16Pre)
 import Protocol.AMQP.Bits
 import Protocol.AMQP.Extracted (
   ClassInfo (..),
@@ -55,6 +55,7 @@ import Protocol.AMQP.Extracted (
   XMethodInfo (..),
   basicName,
   extractInfo,
+  methodName,
  )
 import Protocol.AMQP.FieldValue
 
@@ -64,7 +65,8 @@ compileXml = do
   (classInfos, basicHdrTyInfo) <- runIO extractInfo
   classes <- fmap msum $ mapM mkClassDecs classInfos
   basicHdrs <- mkBasicHdrType basicHdrTyInfo
-  pure $ classes <> basicHdrs
+  let methodDecs = methodSumTyDecs classInfos
+  pure $ methodDecs <> classes <> basicHdrs
 
 
 asParserOfExp :: ClassInfo -> Exp
@@ -73,6 +75,20 @@ asParserOfExp ci =
       toPairExp (x, y) = TupE [Just (LitE $ IntegerL $ toInteger x), Just y]
       firstApp = AppE (VarE 'with2Prefixes) (LitE $ IntegerL $ toInteger $ ciPrefix ci)
    in AppE firstApp pairsExp
+
+
+methodSumTyDecs :: [ClassInfo] -> [Dec]
+methodSumTyDecs classInfos =
+  let ci2sumTy ci = (ciSumTyName ci, [mkName $ pascalCase $ ciName ci])
+      conName ci = mkName $ ciSumTyName ci
+      parserOfExp ci = AppE (AppE (VarE 'fmap) (ConE $ conName ci)) (VarE 'parserOf)
+      sumTyDec = sumTypeD methodName $ map ci2sumTy classInfos
+      parserOfExps = parserOfExp <$> classInfos
+      parserOfDec = parserOfInstanceD' methodName $ AppE (VarE 'choice) $ ListE parserOfExps
+      toBuilderDec = builderInstanceD methodName $ toBuilderPatExp <$> classInfos
+      toBuilderOfX = appOnXE (VarE 'toBuilder)
+      toBuilderPatExp ci = (ConP (conName ci) [xAsVarP], toBuilderOfX)
+   in [sumTyDec, parserOfDec, toBuilderDec]
 
 
 mkClassDecs :: ClassInfo -> DecsQ
@@ -103,16 +119,14 @@ asSumConstr xmi@XMethodInfo {xmiConstrName = con} = case xmiDataFields xmi of
 mkToBuilderPatExp :: Word16 -> XMethodInfo -> (Pat, Exp)
 mkToBuilderPatExp classPre xmi =
   let asLit x = LitE $ IntegerL $ toInteger x
-      nameX = mkName "x"
       appClassLit = flip AppE $ asLit classPre
       appMethodLit = flip AppE $ asLit $ miPrefix $ xmiInfo xmi
       onlyPrefixesE = appMethodLit $ appClassLit $ VarE 'onlyPrefixes
-      coreWithE = appMethodLit $ appClassLit $ VarE 'withPrefixes
-      withPrefixesE = AppE coreWithE $ VarE nameX
+      withPrefixesE = appOnXE $ appMethodLit $ appClassLit $ VarE 'withPrefixes
       conName = mkName $ xmiConstrName xmi
    in case xmiDataFields xmi of
         [] -> (ConP conName [], onlyPrefixesE)
-        _gtThan0 -> (ConP conName [VarP nameX], withPrefixesE)
+        _gtThan0 -> (ConP conName [xAsVarP], withPrefixesE)
 
 
 asMatchTwoPair :: XMethodInfo -> (Word16, Exp)
@@ -201,11 +215,10 @@ anyBitIndexedMbConE constrName argCount = do
 
 mkBuildBasicHdrType :: [(String, Name)] -> Dec
 mkBuildBasicHdrType fieldNames =
-  let nameX = mkName "x"
-      justCanBuildOf = justCanBuildConE nameX . camelCase . ("bh-" ++)
+  let justCanBuildOf = justCanBuildConE xAsName . camelCase . ("bh-" ++)
       accessors = map (\(x, _y) -> justCanBuildOf x) fieldNames
-      applyBuildWithPrefix xs = AppE (VarE 'buildWithPrefix) $ ListE xs
-   in builderInstanceD basicName [(VarP nameX, applyBuildWithPrefix accessors)]
+      applyBuildWithPrefix xs = AppE (VarE 'withBitIndexPrefix) $ ListE xs
+   in builderInstanceD basicName [(xAsVarP, applyBuildWithPrefix accessors)]
 
 
 justCanBuildConE :: Name -> String -> Exp
@@ -237,9 +250,8 @@ bitIndexTyInstDecs wrapperName pos =
 builderForNewTyDecs :: String -> Dec
 builderForNewTyDecs wrapperName =
   let name = mkName wrapperName
-      nameX = mkName "x"
-      constrP = ConP name [VarP nameX]
-      instanceE = AppE (VarE 'toBuilder) (VarE nameX)
+      constrP = ConP name [xAsVarP]
+      instanceE = appOnXE $ VarE 'toBuilder
    in builderInstanceD wrapperName [(constrP, instanceE)]
 
 
@@ -284,24 +296,22 @@ mkInnerDataDecl name fields =
 
 mkInnerDataToBuilderDecs :: String -> [(String, Name)] -> Dec
 mkInnerDataToBuilderDecs name fields =
-  let nameX = mkName "x"
-      invOf ((n, _e) :| []) = invToBuilderConE nameX n
-      invOf (x :| xs) = invBuildBitsE nameX $ x : xs
+  let invOf ((n, _e) :| []) = invToBuilderConE n
+      invOf (x :| xs) = invBuildBitsE $ x : xs
       accessors = map invOf $ groupBitFields fields
       applyMconcat xs = AppE (VarE 'mconcat) $ ListE xs
-   in builderInstanceD name [(VarP nameX, applyMconcat accessors)]
+   in builderInstanceD name [(xAsVarP, applyMconcat accessors)]
 
 
-invBuildBitsE :: Name -> [(String, Name)] -> Exp
-invBuildBitsE nameX fields =
-  let mkAccessor (n, _e) = AppE (VarE $ mkName n) (VarE $ nameX)
+invBuildBitsE :: [(String, Name)] -> Exp
+invBuildBitsE fields =
+  let mkAccessor (n, _e) = appOnXE $ VarE $ mkName n
    in AppE (VarE 'buildBits) $ ListE $ map mkAccessor fields
 
 
-invToBuilderConE :: Name -> String -> Exp
-invToBuilderConE argName funcName =
-  let asVarE = VarE $ mkName funcName
-      inner = AppE asVarE $ VarE argName
+invToBuilderConE :: String -> Exp
+invToBuilderConE funcName =
+  let inner = appOnXE $ VarE $ mkName funcName 
    in AppE (VarE 'toBuilder) inner
 
 
@@ -372,6 +382,18 @@ fieldBang = Bang NoSourceUnpackedness SourceStrict
 
 emptyBang :: Bang
 emptyBang = Bang NoSourceUnpackedness NoSourceStrictness
+
+appOnXE :: Exp -> Exp
+appOnXE e = AppE e xAsVarE 
+
+xAsVarP :: Pat
+xAsVarP =  VarP xAsName
+
+xAsVarE :: Exp
+xAsVarE = VarE xAsName 
+
+xAsName :: Name
+xAsName = mkName "x"
 
 
 camelCase :: String -> String

@@ -18,30 +18,28 @@
 
 module Protocol.AMQP.Bits (
   -- * data types
-  buildWithPrefix,
+  withBitIndexPrefix,
   CanBuild (..),
   BitIndex,
   anyBitIndexedMb,
-
-  -- * functions
 ) where
 
-import Data.Bits
-import Data.ByteString.Builder
+import Data.Bits (Bits (setBit, testBit))
+import Data.ByteString.Builder (word16BE)
 import qualified Data.ByteString.Builder as BB
 import Data.List (foldl')
 import Data.Proxy (Proxy (..))
 import Data.Word (Word16)
 import GHC.TypeLits (KnownNat, Nat, natVal)
 import qualified Protocol.AMQP.Attoparsec as A
-import Protocol.AMQP.FieldValue
+import Protocol.AMQP.Elementary (ParserOf (..), ToBuilder (..))
 
 
 data CanBuild = forall a. ToBuilder a BB.Builder => CanBuild a
 
 
-buildWithPrefix :: [Maybe CanBuild] -> BB.Builder
-buildWithPrefix xs =
+withBitIndexPrefix :: [Maybe CanBuild] -> BB.Builder
+withBitIndexPrefix xs =
   let (asBits, _, asBytes) = foldl' canStep (0, 0, mempty) xs
    in word16BE asBits <> asBytes
 
