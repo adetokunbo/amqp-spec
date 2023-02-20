@@ -63,6 +63,7 @@ test-suite test
   hs-source-dirs:   test
   other-modules:    AMQP.ElementarySpec
                     AMQP.FieldValueSpec
+                    AMQP.FrameSpec
                     AMQP.OrphanInstances
                     AMQP.TH
                     AMQP.TranslatedSpec
