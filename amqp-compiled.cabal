@@ -33,6 +33,7 @@ library
     Protocol.AMQP.Extracted
     Protocol.AMQP.Elementary
     Protocol.AMQP.FieldValue
+    Protocol.AMQP.Frame
     Protocol.AMQP.TH
     Protocol.AMQP.Translated
 
