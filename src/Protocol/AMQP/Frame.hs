@@ -28,10 +28,11 @@ module Protocol.AMQP.Frame (
 import qualified Data.ByteString as BS
 import Data.ByteString.Builder (word16BE)
 import qualified Data.ByteString.Builder as BB
+import qualified Data.ByteString.Lazy as LBS
 import Data.Proxy (Proxy (..))
 import Data.Validity (Validity (..))
 import Data.Validity.ByteString ()
-import Data.Word (Word16, Word32, Word8)
+import Data.Word (Word16, Word8)
 import GHC.Generics (Generic)
 import GHC.TypeLits (KnownNat, Nat, natVal)
 import qualified Protocol.AMQP.Attoparsec as A
@@ -41,7 +42,7 @@ import Protocol.AMQP.Elementary (
   ShortInt,
   ToBuilder (..),
  )
-import Protocol.AMQP.Translated (BasicHdr, Method)
+import Protocol.AMQP.Translated (BasicHdr)
 
 
 data Frame a where
@@ -49,8 +50,7 @@ data Frame a where
     ( n ~ FrameType a
     , KnownNat n
     , ToBuilder a BB.Builder
-    , ToFrameBuilder a
-    , FrameParser a
+    , ParserOf a
     ) =>
     Frame' n a ->
     Frame a
@@ -63,9 +63,8 @@ instance ToBuilder (Frame a) BB.Builder where
 instance
   ( KnownNat n
   , n ~ FrameType a
-  , ToFrameBuilder a
-  , ToFrameBuilder a
-  , FrameParser a
+  , ToBuilder a BB.Builder
+  , ParserOf a
   ) =>
   ParserOf (Frame a)
   where
@@ -82,7 +81,7 @@ type family FrameType (a :: *) :: Nat
 instance
   ( n ~ FrameType a
   , KnownNat n
-  , FrameParser a
+  , ParserOf a
   ) =>
   ParserOf (Frame' n a)
   where
@@ -92,8 +91,7 @@ instance
 
 
 instance
-  ( ToFrameBuilder a
-  , ToBuilder a BB.Builder
+  ( ToBuilder a BB.Builder
   , KnownNat n
   ) =>
   ToBuilder (Frame' n a) BB.Builder
@@ -106,37 +104,30 @@ data InnerFrame a = InnerFrame Word16 a
   deriving anyclass (Validity)
 
 
-instance FrameParser a => ParserOf (InnerFrame a) where
+instance ParserOf a => ParserOf (InnerFrame a) where
   parserOf = do
     channelId <- A.anyWord16be
-    size <- A.anyWord32be
-    res <- frameParser size
+    res <- A.anyWord32be >>= flip A.fixed parserOf
     _ <- A.word8 frameEnd
     pure $ InnerFrame channelId res
 
 
 instance
-  ( ToFrameBuilder a
-  , ToBuilder a BB.Builder
+  ( ToBuilder a BB.Builder
   ) =>
   ToBuilder (InnerFrame a) BB.Builder
   where
   toBuilder (InnerFrame channelId x) =
-    word16BE channelId
-      <> toFrameBuilder x
-      <> BB.word8 frameEnd
+    let sub = BB.toLazyByteString $ toBuilder x
+        subLength = fromIntegral $ LBS.length sub
+     in word16BE channelId
+          <> BB.word32BE subLength
+          <> BB.lazyByteString sub
+          <> BB.word8 frameEnd
 
 
 frameEnd :: Word8
 frameEnd = 0xCE
-
-
-class FrameParser a where
-  frameParser :: Word32 -> A.Parser a
-
-
-class ToBuilder a BB.Builder => ToFrameBuilder a where
-  toFrameBuilder :: a -> BB.Builder
 
 
 data Heartbeat = Heartbeat
@@ -144,16 +135,12 @@ data Heartbeat = Heartbeat
   deriving anyclass (Validity)
 
 
-instance FrameParser Heartbeat where
-  frameParser x = A.take (fromIntegral x) >> pure Heartbeat
+instance ParserOf Heartbeat where
+  parserOf = pure Heartbeat
 
 
 instance ToBuilder Heartbeat BB.Builder where
   toBuilder _ = toBuilder BS.empty
-
-
-instance ToFrameBuilder Heartbeat where
-  toFrameBuilder x = BB.word32BE 0 <> toBuilder x
 
 
 data ContentBody = Body !BS.ByteString
@@ -165,20 +152,8 @@ instance ToBuilder ContentBody BB.Builder where
   toBuilder (Body b) = toBuilder b
 
 
-instance FrameParser ContentBody where
-  frameParser x = Body <$> A.take (fromIntegral x)
-
-
-instance ToFrameBuilder ContentBody where
-  toFrameBuilder (Body b) = BB.word32BE (fromIntegral $ BS.length b) <> toBuilder b
-
-
-instance FrameParser Method where
-  frameParser _ = parserOf
-
-
-instance ToFrameBuilder Method where
-  toFrameBuilder = toBuilder
+instance ParserOf ContentBody where
+  parserOf = Body <$> A.takeByteString
 
 
 {-- How to model this best ?
@@ -195,8 +170,8 @@ data ContentHdr = ContentHdr
   deriving anyclass (Validity)
 
 
-instance FrameParser ContentHdr where
-  frameParser _ = ContentHdr <$> parserOf <*> parserOf <*> parserOf <*> parserOf
+instance ParserOf ContentHdr where
+  parserOf = ContentHdr <$> parserOf <*> parserOf <*> parserOf <*> parserOf
 
 
 instance ToBuilder ContentHdr BB.Builder where
@@ -205,10 +180,6 @@ instance ToBuilder ContentHdr BB.Builder where
       <> (toBuilder $ chWeight x)
       <> (toBuilder $ chBodySize x)
       <> (toBuilder $ chHeaders x)
-
-
-instance ToFrameBuilder ContentHdr where
-  toFrameBuilder = toBuilder
 
 -- newtype Payload (n :: Nat) a = Payload a
 
@@ -228,8 +199,8 @@ instance ToFrameBuilder ContentHdr where
 --     Canal9 <$> parserOf
 
 -- instance
---   ( ToFrameBuilder a
---   , ToBuilder a BB.Builder
+--   (
+--     ToBuilder a BB.Builder
 --   , KnownNat n
 --   ) =>
 --   ToBuilder (Canal9 n a) BB.Builder
