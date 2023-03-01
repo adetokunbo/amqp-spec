@@ -58,6 +58,7 @@ data Handshake = Handshake
   , hsChannelMax :: !(Maybe ShortInt)
   , hsHeartbeat :: !(Maybe ShortInt)
   , hsFrameMax :: !(Maybe LongInt)
+  , hsOnShaken :: !(CoStartData -> CoTuneOkData -> IO ())
   }
 
 
@@ -80,16 +81,17 @@ start src hs = do
 
 
 onCoStart :: ByteSource IO -> Handshake -> InnerFrame Method -> IO ()
-onCoStart src hs@Handshake {hsMechanisms = known} method =
+onCoStart src hs method =
   let spaceSplit = Text.split (== ' ') . Text.decodeUtf8 . coerce
       supportedOf = spaceSplit . csMechanisms
+      determineAuth x = find (flip elem (supportedOf x) . smName) $ hsMechanisms hs
    in case asCoStartData method of
         Left e -> throwIO e
-        Right s -> case find (flip elem (supportedOf s) . smName) known of
+        Right coStart -> case determineAuth coStart of
           Nothing -> throwIO NoSupportedAuth
           Just sm -> do
             hs `reply'` mkCoStartOk (hsConnectionName hs) sm
-            runFramer $ stepFramer src hs $ onChallengeOrTune sm src
+            runFramer $ stepFramer src hs $ onChallengeOrTune coStart sm src
 
 
 asCoStartData :: InnerFrame Method -> Either BadHandshake CoStartData
@@ -109,10 +111,17 @@ mkCoStartOk name SASLMechanism {smName, smInitialResponse} =
         }
 
 
-onChallengeOrTune :: SASLMechanism -> ByteSource IO -> Handshake -> InnerFrame Method -> IO ()
-onChallengeOrTune sm src hs method = flip (either throwIO) (asChallengeOrTune method) $ \case
+onChallengeOrTune ::
+  CoStartData ->
+  SASLMechanism ->
+  ByteSource IO ->
+  Handshake ->
+  InnerFrame Method ->
+  IO ()
+onChallengeOrTune csd sm src hs method = flip (either throwIO) (asChallengeOrTune method) $ \case
   Left tune -> do
-    hs `reply'` mkCoTuneOk hs tune
+    let tunedOk = mkCoTuneOk hs tune
+    hs `reply'` tunedOk
     hs `reply'` mkCoOpen hs
   Right challenge -> case (smChallenge sm) of
     Nothing -> throwIO CannotChallenge
@@ -120,7 +129,7 @@ onChallengeOrTune sm src hs method = flip (either throwIO) (asChallengeOrTune me
       secureOk <- (connFrame . CoSecureOk . coerce) <$> mkResponse challenge
       hs `reply'` secureOk
       -- next step should be tuning; but the challenge may repeat so use @onChallengeOrTune@
-      runFramer $ stepFramer src hs $ onChallengeOrTune sm src
+      runFramer $ stepFramer src hs $ onChallengeOrTune csd sm src
 
 
 asChallengeOrTune :: InnerFrame Method -> Either BadHandshake (Either CoTuneData BS.ByteString)
