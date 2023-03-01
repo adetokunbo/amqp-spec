@@ -26,6 +26,7 @@ module Protocol.AMQP.Elementary (
   DecimalValue (..),
   ShortString (..),
   mkShortString,
+  unsafeMkShortString,
   LongString (..),
   Bit (..),
   Octet (..),
@@ -157,6 +158,9 @@ instance Validity ShortString where
   validate (ShortString n) = check (BS.length n <= 255) "The 'ShortString' length is <= 255"
 
 
+unsafeMkShortString :: Text -> ShortString
+unsafeMkShortString = ShortString . Text.encodeUtf8 
+  
 mkShortString :: Text -> Either Text ShortString
 mkShortString x =
   let encoded = Text.encodeUtf8 x
