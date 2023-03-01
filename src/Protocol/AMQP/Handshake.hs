@@ -16,7 +16,7 @@ module Protocol.AMQP.Handshake (
   amqplain,
 
   -- * functions
-  start,
+  runHandshake,
 ) where
 
 import Control.Exception (Exception, throwIO)
@@ -51,13 +51,13 @@ type ByteSink = BS.ByteString -> IO ()
 
 
 data Handshake = Handshake
-  { hsSink :: !ByteSink
-  , hsConnectionName :: !Text
+  { hsConnectionName :: !Text
   , hsVirtualHost :: !ShortString
   , hsMechanisms :: ![SASLMechanism]
   , hsChannelMax :: !(Maybe ShortInt)
   , hsHeartbeat :: !(Maybe ShortInt)
   , hsFrameMax :: !(Maybe LongInt)
+  , hsSink :: !ByteSink
   , hsOnShaken :: !(CoStartData -> CoTuneOkData -> IO ())
   }
 
@@ -74,29 +74,31 @@ orBadHandshake :: Framer IO a -> Framer IO a
 orBadHandshake = setOnBadParse onParseError . setOnClosed (throwIO ServerClosed)
 
 
-start :: ByteSource IO -> Handshake -> IO ()
-start src hs = do
+runHandshake :: ByteSource IO -> Handshake -> IO ()
+runHandshake src hs = do
   reply hs connectionHeader
-  runFramer $ stepFramer src hs $ onCoStart src
+  -- read Server: runHandshake
+  runFramer $ stepFramer src hs $ onStart src
 
 
-onCoStart :: ByteSource IO -> Handshake -> InnerFrame Method -> IO ()
-onCoStart src hs method =
+onStart :: ByteSource IO -> Handshake -> InnerFrame Method -> IO ()
+onStart src hs method =
   let spaceSplit = Text.split (== ' ') . Text.decodeUtf8 . coerce
       supportedOf = spaceSplit . csMechanisms
       determineAuth x = find (flip elem (supportedOf x) . smName) $ hsMechanisms hs
-   in case asCoStartData method of
+   in case asStartData method of
         Left e -> throwIO e
         Right coStart -> case determineAuth coStart of
           Nothing -> throwIO NoSupportedAuth
           Just sm -> do
             hs `reply'` mkCoStartOk (hsConnectionName hs) sm
+            -- read Server: tune or Server: secure
             runFramer $ stepFramer src hs $ onChallengeOrTune coStart sm src
 
 
-asCoStartData :: InnerFrame Method -> Either BadHandshake CoStartData
-asCoStartData (InnerFrame 0 (ModusConnection (CoStart x))) = Right x
-asCoStartData f = notForHandshake f WantedCoStart
+asStartData :: InnerFrame Method -> Either BadHandshake CoStartData
+asStartData (InnerFrame 0 (ModusConnection (CoStart x))) = Right x
+asStartData f = notForHandshake f WantedCoStart
 
 
 mkCoStartOk :: Text -> SASLMechanism -> InnerFrame Method
@@ -121,9 +123,11 @@ onChallengeOrTune ::
 onChallengeOrTune csd sm src hs method = flip (either throwIO) (asChallengeOrTune method) $ \case
   Left tune -> do
     let tunedOk = mkCoTuneOk hs tune
-    hs `reply'` tunedOk
+    hs `reply'` (connFrame $ CoTuneOk tunedOk)
     hs `reply'` mkCoOpen hs
-  Right challenge -> case (smChallenge sm) of
+    -- read Server: open_ok
+    runFramer $ stepFramer src hs $ onOpenOk csd tunedOk
+  Right challenge -> case smChallenge sm of
     Nothing -> throwIO CannotChallenge
     Just mkResponse -> do
       secureOk <- (connFrame . CoSecureOk . coerce) <$> mkResponse challenge
@@ -138,7 +142,7 @@ asChallengeOrTune (InnerFrame 0 (ModusConnection (CoTune x))) = Right $ Left x
 asChallengeOrTune f = notForHandshake f WantedCoSecureOrTune
 
 
-mkCoTuneOk :: Handshake -> CoTuneData -> InnerFrame Method
+mkCoTuneOk :: Handshake -> CoTuneData -> CoTuneOkData
 mkCoTuneOk hs ct =
   let min' a b = maybe a (min a) b
       disallow0 0 = 65535
@@ -146,7 +150,7 @@ mkCoTuneOk hs ct =
       ctoChannelMax = min' (disallow0 $ ctChannelMax ct) (fmap disallow0 $ hsChannelMax hs)
       ctoFrameMax = min' (ctFrameMax ct) (hsFrameMax hs)
       ctoHeartbeat = min' (ctHeartbeat ct) (hsHeartbeat hs)
-   in connFrame $ CoTuneOk $ CoTuneOkData {ctoChannelMax, ctoFrameMax, ctoHeartbeat}
+   in CoTuneOkData {ctoChannelMax, ctoFrameMax, ctoHeartbeat}
 
 
 mkCoOpen :: Handshake -> InnerFrame Method
@@ -158,6 +162,22 @@ mkCoOpen Handshake {hsVirtualHost} =
         , coReserved1 = unsafeMkShortString ""
         , coVirtualHost = hsVirtualHost
         }
+
+
+onOpenOk ::
+  CoStartData ->
+  CoTuneOkData ->
+  Handshake ->
+  InnerFrame Method ->
+  IO ()
+onOpenOk startData tunedOk hs method = case asOpenOk method of
+  Left err -> throwIO err
+  Right _ -> hsOnShaken hs startData tunedOk
+
+
+asOpenOk :: InnerFrame Method -> Either BadHandshake ShortString
+asOpenOk (InnerFrame 0 (ModusConnection (CoOpenOk x))) = Right x
+asOpenOk f = notForHandshake f WantedCoOpenOk
 
 
 type AuthMechanism = Text
@@ -220,11 +240,10 @@ notForHandshake (InnerFrame x _) _ = Left $ WantedChan0 x
 data BadHandshake
   = WantedChan0 !Word16
   | WantedCoStart
-  | WantedCoTune
   | WantedCoSecureOrTune
+  | WantedCoOpenOk
   | NoSupportedAuth
   | ProtocolError !Text
-  | BadVirtualHost
   | CannotChallenge
   | ServerClosed
   deriving (Eq, Show)
