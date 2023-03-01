@@ -89,8 +89,8 @@ data FieldValue
   | FString !LongString
   | FTimestamp !LongLongInt
   | FByteArray !ByteString
-  | FFieldArray ![FieldValue]
-  | FFieldTable !FieldTable
+  | FArray ![FieldValue]
+  | FTable !FieldTable
   deriving (Eq, Show, Generic)
   deriving anyclass (Validity)
 
@@ -105,13 +105,13 @@ instance ToBuilder FieldValue BB.Builder where
   toBuilder (FDouble x) = char7 'd' <> doubleBE x
   toBuilder (FDecimal x) = char7 'D' <> toBuilder x
   toBuilder (FString x) = char7 'S' <> (toBuilder x)
-  toBuilder (FFieldArray []) = char7 'A' <> word32BE 0
-  toBuilder (FFieldArray xs) =
+  toBuilder (FArray []) = char7 'A' <> word32BE 0
+  toBuilder (FArray xs) =
     let subs = toLazyByteString $ mconcat (map toBuilder xs)
         size = LBS.length subs
      in char7 'A' <> word32BE (fromIntegral size) <> lazyByteString subs
   toBuilder (FTimestamp x) = char7 'T' <> toBuilder x
-  toBuilder (FFieldTable x) = char7 'F' <> toBuilder x
+  toBuilder (FTable x) = char7 'F' <> toBuilder x
   toBuilder (FVoid) = char7 'V'
   toBuilder (FByteArray b) = char7 'x' <> (word32BE $ fromIntegral $ BS.length b) <> byteString b
 
@@ -129,8 +129,8 @@ instance ParserOf FieldValue where
       'D' -> FDecimal <$> parserOf
       'S' -> FString <$> parserOf
       'T' -> FTimestamp <$> parserOf
-      'F' -> FFieldTable <$> parserOf
-      'A' -> fmap FFieldArray $ A.anyWord32be >>= flip A.fixed (A.many' parserOf)
+      'F' -> FTable <$> parserOf
+      'A' -> fmap FArray $ A.anyWord32be >>= flip A.fixed (A.many' parserOf)
       'V' -> pure FVoid
       'x' -> A.anyWord32be >>= fmap FByteArray . A.take . fromIntegral
       x -> fail $ "unknown field type: " ++ show x
