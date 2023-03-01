@@ -2,6 +2,6 @@ packages: .
 
 source-repository-package
   type: git
-  location: git@adetokunbo.github.com:adetokunbo/attoparsec-framer.git
+  location: https://github.com/adetokunbo/attoparsec-framer.git
   branch: main
   tag: main
