@@ -17,8 +17,6 @@ module Protocol.AMQP.Handshake (
 
   -- * functions
   start,
-  connectionHeader,
-  mechanismsOf,
 ) where
 
 import Control.Exception (Exception, throwIO)
@@ -82,22 +80,21 @@ start src hs = do
 
 
 onCoStart :: ByteSource IO -> Handshake -> InnerFrame Method -> IO ()
-onCoStart src hs@Handshake {hsMechanisms = known} method = case mechanismsOf method of
-  Left e -> throwIO e
-  Right supported -> case find (flip elem supported . smName) known of
-    Nothing -> throwIO NoSupportedAuth
-    Just x -> do
-      hs `reply'` mkCoStartOk (hsConnectionName hs) x
-      runFramer $ stepFramer src hs $ onChallengeOrTune src x
+onCoStart src hs@Handshake {hsMechanisms = known} method =
+  let spaceSplit = Text.split (== ' ') . Text.decodeUtf8 . coerce
+      supportedOf = spaceSplit . csMechanisms
+   in case asCoStartData method of
+        Left e -> throwIO e
+        Right s -> case find (flip elem (supportedOf s) . smName) known of
+          Nothing -> throwIO NoSupportedAuth
+          Just sm -> do
+            hs `reply'` mkCoStartOk (hsConnectionName hs) sm
+            runFramer $ stepFramer src hs $ onChallengeOrTune sm src
 
 
-mechanismsOf :: InnerFrame Method -> Either BadHandshake [AuthMechanism]
-mechanismsOf (InnerFrame 0 (ModusConnection (CoStart x))) = Right $ asMechanisms $ csMechanisms x
-mechanismsOf f = notForHandshake f WantedCoStart
-
-
-asMechanisms :: LongString -> [AuthMechanism]
-asMechanisms = Text.split (== ' ') . Text.decodeUtf8 . coerce
+asCoStartData :: InnerFrame Method -> Either BadHandshake CoStartData
+asCoStartData (InnerFrame 0 (ModusConnection (CoStart x))) = Right x
+asCoStartData f = notForHandshake f WantedCoStart
 
 
 mkCoStartOk :: Text -> SASLMechanism -> InnerFrame Method
@@ -112,28 +109,24 @@ mkCoStartOk name SASLMechanism {smName, smInitialResponse} =
         }
 
 
-onChallengeOrTune :: ByteSource IO -> SASLMechanism -> Handshake -> InnerFrame Method -> IO ()
-onChallengeOrTune src sm hs method = flip (either throwIO) (challengeOrTune method) $ \case
+onChallengeOrTune :: SASLMechanism -> ByteSource IO -> Handshake -> InnerFrame Method -> IO ()
+onChallengeOrTune sm src hs method = flip (either throwIO) (asChallengeOrTune method) $ \case
   Left tune -> do
     hs `reply'` mkCoTuneOk hs tune
     hs `reply'` mkCoOpen hs
-  Right x -> replyToChallenge src sm x hs
+  Right challenge -> case (smChallenge sm) of
+    Nothing -> throwIO CannotChallenge
+    Just mkResponse -> do
+      secureOk <- (connFrame . CoSecureOk . coerce) <$> mkResponse challenge
+      hs `reply'` secureOk
+      -- next step should be tuning; but the challenge may repeat so use @onChallengeOrTune@
+      runFramer $ stepFramer src hs $ onChallengeOrTune sm src
 
 
-challengeOrTune :: InnerFrame Method -> Either BadHandshake (Either CoTuneData BS.ByteString)
-challengeOrTune (InnerFrame 0 (ModusConnection (CoSecure x))) = Right $ Right $ coerce x
-challengeOrTune (InnerFrame 0 (ModusConnection (CoTune x))) = Right $ Left x
-challengeOrTune f = notForHandshake f WantedCoSecureOrTune
-
-
-replyToChallenge :: ByteSource IO -> SASLMechanism -> BS.ByteString -> Handshake -> IO ()
-replyToChallenge src sm challenge hs = case (smChallenge sm) of
-  Nothing -> throwIO CannotChallenge -- no challenge handler; throw to halt the handshake
-  Just mkResponse -> do
-    secureOk <- (connFrame . CoSecureOk . coerce) <$> mkResponse challenge
-    hs `reply'` secureOk
-    -- next step should be tuning; but the challenge may repeat so use @onChallengeOrTune@
-    runFramer $ stepFramer src hs $ onChallengeOrTune src sm
+asChallengeOrTune :: InnerFrame Method -> Either BadHandshake (Either CoTuneData BS.ByteString)
+asChallengeOrTune (InnerFrame 0 (ModusConnection (CoSecure x))) = Right $ Right $ coerce x
+asChallengeOrTune (InnerFrame 0 (ModusConnection (CoTune x))) = Right $ Left x
+asChallengeOrTune f = notForHandshake f WantedCoSecureOrTune
 
 
 mkCoTuneOk :: Handshake -> CoTuneData -> InnerFrame Method
