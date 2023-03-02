@@ -9,17 +9,19 @@
 {-# OPTIONS_HADDOCK prune not-home #-}
 
 module Protocol.AMQP.Handshake (
-  -- * Authentication using SASL
-  SASLMechanism (..),
+  -- * Perform the handshake
   Handshake (..),
+  ByteSink,
+  runHandshake,
+
+  -- * SASL Authentication
+  SASLMechanism (..),
   plain,
   amqplain,
-
-  -- * functions
-  runHandshake,
 ) where
 
-import Control.Exception (Exception, throwIO)
+import Control.Exception (Exception)
+import Control.Monad.Catch (MonadThrow (..), throwM)
 import Data.Attoparsec.Framer
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Builder as BB
@@ -47,49 +49,49 @@ import Protocol.AMQP.Frame
 import Protocol.AMQP.Translated
 
 
-type ByteSink = BS.ByteString -> IO ()
+type ByteSink m = BS.ByteString -> m ()
 
 
-data Handshake = Handshake
+data Handshake m = Handshake
   { hsConnectionName :: !Text
   , hsVirtualHost :: !ShortString
-  , hsMechanisms :: ![SASLMechanism]
+  , hsMechanisms :: ![SASLMechanism m]
   , hsChannelMax :: !(Maybe ShortInt)
   , hsHeartbeat :: !(Maybe ShortInt)
   , hsFrameMax :: !(Maybe LongInt)
-  , hsSink :: !ByteSink
-  , hsOnShaken :: !(CoStartData -> CoTuneOkData -> IO ())
+  , hsSink :: !(ByteSink m)
+  , hsOnShaken :: !(CoStartData -> CoTuneOkData -> m ())
   }
 
 
-reply :: ToBuilder payload BB.Builder => Handshake -> payload -> IO ()
+reply :: (MonadThrow m, ToBuilder payload BB.Builder) => Handshake m -> payload -> m ()
 reply hs p = hsSink hs $ LBS.toStrict $ BB.toLazyByteString $ toBuilder p
 
 
-reply' :: Handshake -> InnerFrame Method -> IO ()
+reply' :: MonadThrow m => Handshake m -> InnerFrame Method -> m ()
 reply' hs = reply hs . Frame . Frame'
 
 
-orBadHandshake :: Framer IO a -> Framer IO a
-orBadHandshake = setOnBadParse onParseError . setOnClosed (throwIO ServerClosed)
+orBadHandshake :: MonadThrow m => Framer m a -> Framer m a
+orBadHandshake = setOnBadParse onParseError . setOnClosed (throwM ServerClosed)
 
 
-runHandshake :: ByteSource IO -> Handshake -> IO ()
+runHandshake :: MonadThrow m => ByteSource m -> Handshake m -> m ()
 runHandshake src hs = do
   reply hs connectionHeader
   -- read Server: runHandshake
   runFramer $ stepFramer src hs $ onStart src
 
 
-onStart :: ByteSource IO -> Handshake -> InnerFrame Method -> IO ()
+onStart :: MonadThrow m => ByteSource m -> Handshake m -> InnerFrame Method -> m ()
 onStart src hs method =
   let spaceSplit = Text.split (== ' ') . Text.decodeUtf8 . coerce
       supportedOf = spaceSplit . csMechanisms
       determineAuth x = find (flip elem (supportedOf x) . smName) $ hsMechanisms hs
    in case asStartData method of
-        Left e -> throwIO e
+        Left e -> throwM e
         Right coStart -> case determineAuth coStart of
-          Nothing -> throwIO NoSupportedAuth
+          Nothing -> throwM NoSupportedAuth
           Just sm -> do
             hs `reply'` mkCoStartOk (hsConnectionName hs) sm
             -- read Server: tune or Server: secure
@@ -101,7 +103,7 @@ asStartData (InnerFrame 0 (ModusConnection (CoStart x))) = Right x
 asStartData f = notForHandshake f WantedCoStart
 
 
-mkCoStartOk :: Text -> SASLMechanism -> InnerFrame Method
+mkCoStartOk :: Text -> SASLMechanism m -> InnerFrame Method
 mkCoStartOk name SASLMechanism {smName, smInitialResponse} =
   connFrame $
     CoStartOk $
@@ -114,13 +116,14 @@ mkCoStartOk name SASLMechanism {smName, smInitialResponse} =
 
 
 onChallengeOrTune ::
+  MonadThrow m =>
   CoStartData ->
-  SASLMechanism ->
-  ByteSource IO ->
-  Handshake ->
+  SASLMechanism m ->
+  ByteSource m ->
+  Handshake m ->
   InnerFrame Method ->
-  IO ()
-onChallengeOrTune csd sm src hs method = flip (either throwIO) (asChallengeOrTune method) $ \case
+  m ()
+onChallengeOrTune csd sm src hs method = flip (either throwM) (asChallengeOrTune method) $ \case
   Left tune -> do
     let tunedOk = mkCoTuneOk hs tune
     hs `reply'` (connFrame $ CoTuneOk tunedOk)
@@ -128,7 +131,7 @@ onChallengeOrTune csd sm src hs method = flip (either throwIO) (asChallengeOrTun
     -- read Server: open_ok
     runFramer $ stepFramer src hs $ onOpenOk csd tunedOk
   Right challenge -> case smChallenge sm of
-    Nothing -> throwIO CannotChallenge
+    Nothing -> throwM CannotChallenge
     Just mkResponse -> do
       secureOk <- (connFrame . CoSecureOk . coerce) <$> mkResponse challenge
       hs `reply'` secureOk
@@ -142,7 +145,7 @@ asChallengeOrTune (InnerFrame 0 (ModusConnection (CoTune x))) = Right $ Left x
 asChallengeOrTune f = notForHandshake f WantedCoSecureOrTune
 
 
-mkCoTuneOk :: Handshake -> CoTuneData -> CoTuneOkData
+mkCoTuneOk :: Handshake m -> CoTuneData -> CoTuneOkData
 mkCoTuneOk hs ct =
   let min' a b = maybe a (min a) b
       disallow0 0 = 65535
@@ -153,7 +156,7 @@ mkCoTuneOk hs ct =
    in CoTuneOkData {ctoChannelMax, ctoFrameMax, ctoHeartbeat}
 
 
-mkCoOpen :: Handshake -> InnerFrame Method
+mkCoOpen :: Handshake m -> InnerFrame Method
 mkCoOpen Handshake {hsVirtualHost} =
   connFrame $
     CoOpen $
@@ -165,13 +168,14 @@ mkCoOpen Handshake {hsVirtualHost} =
 
 
 onOpenOk ::
+  MonadThrow m =>
   CoStartData ->
   CoTuneOkData ->
-  Handshake ->
+  Handshake m ->
   InnerFrame Method ->
-  IO ()
+  m ()
 onOpenOk startData tunedOk hs method = case asOpenOk method of
-  Left err -> throwIO err
+  Left err -> throwM err
   Right _ -> hsOnShaken hs startData tunedOk
 
 
@@ -186,18 +190,18 @@ type AuthMechanism = Text
 {- | A 'SASLMechanism' is described by its name ('saslName'), its initial response ('saslInitialResponse'), and an optional function ('saslChallengeFunc') that
  transforms a security challenge provided by the server into response, which is then sent back to the server for verification.
 -}
-data SASLMechanism = SASLMechanism
+data SASLMechanism m = SASLMechanism
   { -- | mechanism name
     smName :: !AuthMechanism
   , -- | initial response
     smInitialResponse :: !BS.ByteString
   , -- | challenge processing function
-    smChallenge :: !(Maybe (BS.ByteString -> IO BS.ByteString))
+    smChallenge :: !(Maybe (BS.ByteString -> m BS.ByteString))
   }
 
 
 -- | The @PLAIN@ SASL mechanism. See <http://tools.ietf.org/html/rfc4616 RFC4616>
-plain :: Text -> Text -> SASLMechanism
+plain :: Text -> Text -> SASLMechanism m
 plain name password =
   let nul = '\0'
       smInitialResponse = Text.encodeUtf8 $ Text.cons nul name <> Text.cons nul password
@@ -205,7 +209,7 @@ plain name password =
 
 
 -- | The @AMQPLAIN@ SASL mechanism.
-amqplain :: Text -> Text -> SASLMechanism
+amqplain :: Text -> Text -> SASLMechanism m
 amqplain name password =
   let amqpPair x y = toAmqpPair x $ FString $ coerce $ Text.encodeUtf8 y
       concatBuilders = mconcat . map (\(x, y) -> toBuilder x <> toBuilder y)
@@ -252,19 +256,20 @@ data BadHandshake
 instance Exception BadHandshake
 
 
-onParseError :: Text -> IO ()
-onParseError x = throwIO $ ProtocolError x
+onParseError :: MonadThrow m => Text -> m ()
+onParseError x = throwM $ ProtocolError x
 
 
 stepFramer ::
-  ByteSource IO ->
+  MonadThrow m =>
+  ByteSource m ->
   t ->
-  (t -> InnerFrame Method -> IO ()) ->
-  Framer IO (Frame Method)
+  (t -> InnerFrame Method -> m ()) ->
+  Framer m (Frame Method)
 stepFramer src hs step = orBadHandshake $ mkFramer' parserOf (run1Method $ step hs) src
 
 
-run1Method :: (InnerFrame Method -> IO ()) -> Frame Method -> IO Progression
+run1Method :: MonadThrow m => (InnerFrame Method -> m ()) -> Frame Method -> m Progression
 run1Method f (Frame (Frame' inner)) = do
   f inner
   pure Stop
