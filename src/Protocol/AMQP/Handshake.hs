@@ -66,6 +66,7 @@ data Options = Options
 data Handshake m = Handshake
   { hsMechanisms :: ![SASLMechanism m]
   , hsSink :: !(ByteSink m)
+  , hsSource :: !(ByteSource m)
   , hsOnShaken :: !(CoStartData -> CoTuneOkData -> m ())
   , hsOptions :: !Options
   }
@@ -83,15 +84,15 @@ orBadHandshake :: MonadThrow m => Framer m a -> Framer m a
 orBadHandshake = setOnBadParse onParseError . setOnClosed (throwM ServerClosed)
 
 
-runHandshake :: MonadThrow m => ByteSource m -> Handshake m -> m ()
-runHandshake src hs = do
+runHandshake :: MonadThrow m => Handshake m -> m ()
+runHandshake hs = do
   reply hs connectionHeader
   -- read Server: runHandshake
-  runFramer $ stepFramer src hs $ onStart src
+  runFramer $ stepFramer hs onStart
 
 
-onStart :: MonadThrow m => ByteSource m -> Handshake m -> InnerFrame Method -> m ()
-onStart src hs method =
+onStart :: MonadThrow m => Handshake m -> InnerFrame Method -> m ()
+onStart hs method =
   let spaceSplit = Text.split (== ' ') . Text.decodeUtf8 . coerce
       supportedOf = spaceSplit . csMechanisms
       determineAuth x = find (flip elem (supportedOf x) . smName) $ hsMechanisms hs
@@ -102,7 +103,7 @@ onStart src hs method =
           Just sm -> do
             hs `reply'` mkCoStartOk (opConnectionName $ hsOptions hs) sm
             -- read Server: tune or Server: secure
-            runFramer $ stepFramer src hs $ onChallengeOrTune coStart sm src
+            runFramer $ stepFramer hs $ onChallengeOrTune coStart sm
 
 
 asStartData :: InnerFrame Method -> Either BadHandshake CoStartData
@@ -126,24 +127,23 @@ onChallengeOrTune ::
   MonadThrow m =>
   CoStartData ->
   SASLMechanism m ->
-  ByteSource m ->
   Handshake m ->
   InnerFrame Method ->
   m ()
-onChallengeOrTune csd sm src hs method = flip (either throwM) (asChallengeOrTune method) $ \case
+onChallengeOrTune csd sm hs method = flip (either throwM) (asChallengeOrTune method) $ \case
   Left tune -> do
     let tunedOk = mkCoTuneOk hs tune
     hs `reply'` (connFrame $ CoTuneOk tunedOk)
     hs `reply'` mkCoOpen hs
     -- read Server: open_ok
-    runFramer $ stepFramer src hs $ onOpenOk csd tunedOk
+    runFramer $ stepFramer hs $ onOpenOk csd tunedOk
   Right challenge -> case smChallenge sm of
     Nothing -> throwM CannotChallenge
     Just mkResponse -> do
       secureOk <- (connFrame . CoSecureOk . coerce) <$> mkResponse challenge
       hs `reply'` secureOk
       -- next step should be tuning; but the challenge may repeat so use @onChallengeOrTune@
-      runFramer $ stepFramer src hs $ onChallengeOrTune csd sm src
+      runFramer $ stepFramer hs $ onChallengeOrTune csd sm
 
 
 asChallengeOrTune :: InnerFrame Method -> Either BadHandshake (Either CoTuneData BS.ByteString)
@@ -272,11 +272,10 @@ onParseError x = throwM $ ProtocolError x
 
 stepFramer ::
   MonadThrow m =>
-  ByteSource m ->
-  t ->
-  (t -> InnerFrame Method -> m ()) ->
+  Handshake m ->
+  (Handshake m -> InnerFrame Method -> m ()) ->
   Framer m (Frame Method)
-stepFramer src hs step = orBadHandshake $ mkFramer' parserOf (run1Method $ step hs) src
+stepFramer hs step = orBadHandshake $ mkFramer' parserOf (run1Method $ step hs) $ hsSource hs
 
 
 run1Method :: MonadThrow m => (InnerFrame Method -> m ()) -> Frame Method -> m Progression
