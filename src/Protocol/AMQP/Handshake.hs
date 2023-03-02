@@ -52,15 +52,22 @@ import Protocol.AMQP.Translated
 type ByteSink m = BS.ByteString -> m ()
 
 
+{--| Represents connection configuration choices. -}
+data Options = Options
+  { opVirtualHost :: !ShortString
+  , opChannelMax :: !(Maybe ShortInt)
+  , opConnectionName :: !Text
+  , opHeartbeat :: !(Maybe ShortInt)
+  , opFrameMax :: !(Maybe LongInt)
+  }
+  deriving (Eq, Show)
+
+
 data Handshake m = Handshake
-  { hsConnectionName :: !Text
-  , hsVirtualHost :: !ShortString
-  , hsMechanisms :: ![SASLMechanism m]
-  , hsChannelMax :: !(Maybe ShortInt)
-  , hsHeartbeat :: !(Maybe ShortInt)
-  , hsFrameMax :: !(Maybe LongInt)
+  { hsMechanisms :: ![SASLMechanism m]
   , hsSink :: !(ByteSink m)
   , hsOnShaken :: !(CoStartData -> CoTuneOkData -> m ())
+  , hsOptions :: !Options
   }
 
 
@@ -93,7 +100,7 @@ onStart src hs method =
         Right coStart -> case determineAuth coStart of
           Nothing -> throwM NoSupportedAuth
           Just sm -> do
-            hs `reply'` mkCoStartOk (hsConnectionName hs) sm
+            hs `reply'` mkCoStartOk (opConnectionName $ hsOptions hs) sm
             -- read Server: tune or Server: secure
             runFramer $ stepFramer src hs $ onChallengeOrTune coStart sm src
 
@@ -150,20 +157,23 @@ mkCoTuneOk hs ct =
   let min' a b = maybe a (min a) b
       disallow0 0 = 65535
       disallow0 x = x
-      ctoChannelMax = min' (disallow0 $ ctChannelMax ct) (fmap disallow0 $ hsChannelMax hs)
-      ctoFrameMax = min' (ctFrameMax ct) (hsFrameMax hs)
-      ctoHeartbeat = min' (ctHeartbeat ct) (hsHeartbeat hs)
+      ctoChannelMax =
+        min'
+          (disallow0 $ ctChannelMax ct)
+          (fmap disallow0 $ opChannelMax $ hsOptions hs)
+      ctoFrameMax = min' (ctFrameMax ct) (opFrameMax $ hsOptions hs)
+      ctoHeartbeat = min' (ctHeartbeat ct) (opHeartbeat $ hsOptions hs)
    in CoTuneOkData {ctoChannelMax, ctoFrameMax, ctoHeartbeat}
 
 
 mkCoOpen :: Handshake m -> InnerFrame Method
-mkCoOpen Handshake {hsVirtualHost} =
+mkCoOpen Handshake {hsOptions = Options {opVirtualHost}} =
   connFrame $
     CoOpen $
       CoOpenData
         { coReserved2 = coerce False
         , coReserved1 = unsafeMkShortString ""
-        , coVirtualHost = hsVirtualHost
+        , coVirtualHost = opVirtualHost
         }
 
 
