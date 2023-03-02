@@ -27,7 +27,8 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Lazy as LBS
 import Data.Coerce (coerce)
-import Data.Foldable (find)
+import qualified Data.Foldable as Fold
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
@@ -64,7 +65,7 @@ data Options = Options
 
 
 data Handshake m = Handshake
-  { hsMechanisms :: ![SASLMechanism m]
+  { hsMechanisms :: !(NonEmpty (SASLMechanism m))
   , hsSink :: !(ByteSink m)
   , hsSource :: !(ByteSource m)
   , hsOnShaken :: !(CoStartData -> CoTuneOkData -> m ())
@@ -95,7 +96,7 @@ onStart :: MonadThrow m => Handshake m -> InnerFrame Method -> m ()
 onStart hs method =
   let spaceSplit = Text.split (== ' ') . Text.decodeUtf8 . coerce
       supportedOf = spaceSplit . csMechanisms
-      determineAuth x = find (flip elem (supportedOf x) . smName) $ hsMechanisms hs
+      determineAuth x = Fold.find (flip Fold.elem (supportedOf x) . smName) $ hsMechanisms hs
    in case asStartData method of
         Left e -> throwM e
         Right coStart -> case determineAuth coStart of
