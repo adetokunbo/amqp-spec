@@ -12,7 +12,12 @@ module Protocol.AMQP.Handshake (
   -- * Perform the handshake
   Handshake (..),
   ByteSink,
+  defaultHandshake,
   runHandshake,
+
+  -- * Configuration
+  Options (..),
+  defaultOptions,
 
   -- * SASL Authentication
   SASLMechanism (..),
@@ -64,6 +69,19 @@ data Options = Options
   deriving (Eq, Show)
 
 
+defaultOptions :: Options
+defaultOptions =
+  Options
+    { opVirtualHost = unsafeMkShortString "localhost"
+    , opChannelMax = Nothing
+    , opConnectionName = "unnamed haskell connection"
+    , opHeartbeat = Nothing
+    , opFrameMax = Nothing
+    }
+
+
+{--| Groups all the input data structures necessary to complete a protocol
+   handshake. -}
 data Handshake m = Handshake
   { hsMechanisms :: !(NonEmpty (SASLMechanism m))
   , hsSink :: !(ByteSink m)
@@ -71,6 +89,21 @@ data Handshake m = Handshake
   , hsOnShaken :: !(CoStartData -> CoTuneOkData -> m ())
   , hsOptions :: !Options
   }
+
+
+defaultHandshake ::
+  ByteSink m ->
+  ByteSource m ->
+  (CoStartData -> CoTuneOkData -> m ()) ->
+  Handshake m
+defaultHandshake hsSink hsSource hsOnShaken =
+  Handshake
+    { hsMechanisms = (plain "guest" "guest") :| [amqplain "guest" "guest"]
+    , hsSink
+    , hsSource
+    , hsOptions = defaultOptions
+    , hsOnShaken
+    }
 
 
 reply :: (MonadThrow m, ToBuilder payload BB.Builder) => Handshake m -> payload -> m ()
