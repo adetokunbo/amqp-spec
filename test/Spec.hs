@@ -7,6 +7,7 @@ module Main where
 import qualified AMQP.ElementarySpec as Elementary
 import qualified AMQP.FieldValueSpec as FieldValue
 import qualified AMQP.FrameSpec as Frame
+import qualified AMQP.HandshakeSpec as Handshake
 import qualified AMQP.TranslatedSpec as Translated
 import System.IO (
   BufferMode (..),
@@ -26,3 +27,4 @@ main = do
     Frame.spec
     FieldValue.spec
     Translated.spec
+    Handshake.spec
