@@ -17,8 +17,4 @@ in
       hlint = "3.4.1";  # using a specific version, at this nix pin latest does not build
     };
     # See overlays/tools.nix for more details
-
-    # Prevents cabal from choosing alternate plans, so that
-    # *all* dependencies are provided by Nix.
-    exactDeps = true;
   }

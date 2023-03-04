@@ -34,6 +34,7 @@ library
     Protocol.AMQP.Elementary
     Protocol.AMQP.FieldValue
     Protocol.AMQP.Frame
+    Protocol.AMQP.Handshake
     Protocol.AMQP.TH
     Protocol.AMQP.Translated
 
@@ -41,10 +42,12 @@ library
   build-depends:
     , attoparsec           >=0.14.4   && <0.15
     , attoparsec-binary    >=0.2      && <0.3
+    , attoparsec-framer
     , base                 >=4.10     && <5
     , bytestring           >=0.10.8.2 && <0.12.0.0
     , chunked-data         >=0.3.0    && <0.4
     , containers           >=0.6.5    && <0.8
+    , exceptions >= 0.10
     , pretty-simple
     , split                >=0.2.3    && <0.3
     , template-haskell     >=2.16.0   && <2.17
@@ -66,6 +69,7 @@ test-suite test
                     AMQP.FrameSpec
                     AMQP.OrphanInstances
                     AMQP.TH
+                    AMQP.HandshakeSpec
                     AMQP.TranslatedSpec
                     Test.Validity.ParserOf
   default-language: Haskell2010
@@ -73,6 +77,7 @@ test-suite test
   build-depends:
     , amqp-compiled
     , attoparsec
+    , attoparsec-framer
     , base
     , chunked-data
     , bytestring

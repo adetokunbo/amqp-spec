@@ -23,6 +23,8 @@ module Protocol.AMQP.Frame (
   ContentBody (..),
   ContentHdr (..),
   InnerFrame (..),
+  Frame (..),
+  Frame' (..),
 ) where
 
 import qualified Data.ByteString as BS
@@ -42,7 +44,13 @@ import Protocol.AMQP.Elementary (
   ShortInt,
   ToBuilder (..),
  )
-import Protocol.AMQP.Translated (BasicHdr)
+import Protocol.AMQP.Translated (BasicHdr, Method)
+
+
+type instance FrameType Heartbeat = 8
+
+
+type instance FrameType Method = 1
 
 
 data Frame a where
