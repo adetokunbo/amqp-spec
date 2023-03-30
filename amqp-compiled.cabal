@@ -37,6 +37,7 @@ library
     Protocol.AMQP.Handshake
     Protocol.AMQP.TH
     Protocol.AMQP.Translated
+    Protocol.AMQP.TrackedIds
 
   hs-source-dirs:   src
   build-depends:
