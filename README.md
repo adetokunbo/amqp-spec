@@ -21,4 +21,4 @@ XML specification.
 [hackage-deps]:       <http://packdeps.haskellers.com/feed?needle=amqp-compiled>
 [hackage-badge]:      <https://img.shields.io/hackage/v/amqp-compiled.svg>
 [hackage]:            <https://hackage.haskell.org/package/amqp-compiled>
-[AMQP 0.9.1]:         <spec/amqp-0-9-1.xml>
+[AMQP 0.9.1]:         <spec/amqp0-9-1.xml>
