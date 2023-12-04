@@ -87,7 +87,7 @@ methodSumTyDecs classInfos =
       parserOfDec = parserOfInstanceD' methodName $ AppE (VarE 'choice) $ ListE parserOfExps
       toBuilderDec = builderInstanceD methodName $ toBuilderPatExp <$> classInfos
       toBuilderOfX = appOnXE (VarE 'toBuilder)
-      toBuilderPatExp ci = (ConP (conName ci) [xAsVarP], toBuilderOfX)
+      toBuilderPatExp ci = (ConP (conName ci) [] [xAsVarP], toBuilderOfX)
    in [sumTyDec, parserOfDec, toBuilderDec]
 
 
@@ -125,8 +125,8 @@ mkToBuilderPatExp classPre xmi =
       withPrefixesE = appOnXE $ appMethodLit $ appClassLit $ VarE 'withPrefixes
       conName = mkName $ xmiConstrName xmi
    in case xmiDataFields xmi of
-        [] -> (ConP conName [], onlyPrefixesE)
-        _gtThan0 -> (ConP conName [xAsVarP], withPrefixesE)
+        [] -> (ConP conName [] [], onlyPrefixesE)
+        _gtThan0 -> (ConP conName [] [xAsVarP], withPrefixesE)
 
 
 asMatchTwoPair :: XMethodInfo -> (Word16, Exp)
@@ -187,7 +187,7 @@ mkInnerDataParserOfDoE constr fields =
         ]
       boundVarsE (n, _e) = (mkName n, VarE $ mkBoundName n)
       recordConE = AppE (VarE 'pure) (RecConE constrName $ map boundVarsE fields)
-   in DoE $ concatMap bindOf (groupBitFields fields) <> [NoBindS recordConE]
+   in DoE Nothing $ concatMap bindOf (groupBitFields fields) <> [NoBindS recordConE]
 
 
 groupBitFields :: Foldable f => f (String, Name) -> [NE.NonEmpty (String, Name)]
@@ -250,7 +250,7 @@ bitIndexTyInstDecs wrapperName pos =
 builderForNewTyDecs :: String -> Dec
 builderForNewTyDecs wrapperName =
   let name = mkName wrapperName
-      constrP = ConP name [xAsVarP]
+      constrP = ConP name [] [xAsVarP]
       instanceE = appOnXE $ VarE 'toBuilder
    in builderInstanceD wrapperName [(constrP, instanceE)]
 
@@ -311,7 +311,7 @@ invBuildBitsE fields =
 
 invToBuilderConE :: String -> Exp
 invToBuilderConE funcName =
-  let inner = appOnXE $ VarE $ mkName funcName 
+  let inner = appOnXE $ VarE $ mkName funcName
    in AppE (VarE 'toBuilder) inner
 
 
@@ -383,14 +383,18 @@ fieldBang = Bang NoSourceUnpackedness SourceStrict
 emptyBang :: Bang
 emptyBang = Bang NoSourceUnpackedness NoSourceStrictness
 
+
 appOnXE :: Exp -> Exp
-appOnXE e = AppE e xAsVarE 
+appOnXE e = AppE e xAsVarE
+
 
 xAsVarP :: Pat
-xAsVarP =  VarP xAsName
+xAsVarP = VarP xAsName
+
 
 xAsVarE :: Exp
-xAsVarE = VarE xAsName 
+xAsVarE = VarE xAsName
+
 
 xAsName :: Name
 xAsName = mkName "x"
