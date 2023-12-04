@@ -5,13 +5,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -152,7 +148,7 @@ instance ToBuilder Heartbeat BB.Builder where
   toBuilder _ = toBuilder BS.empty
 
 
-data ContentBody = Body !BS.ByteString
+newtype ContentBody = Body BS.ByteString
   deriving (Eq, Show, Generic)
   deriving anyclass (Validity)
 
@@ -185,10 +181,10 @@ instance ParserOf ContentHdr where
 
 instance ToBuilder ContentHdr BB.Builder where
   toBuilder x =
-    (toBuilder $ chClassId x)
-      <> (toBuilder $ chWeight x)
-      <> (toBuilder $ chBodySize x)
-      <> (toBuilder $ chHeaders x)
+    toBuilder (chClassId x)
+      <> toBuilder (chWeight x)
+      <> toBuilder (chBodySize x)
+      <> toBuilder (chHeaders x)
 
 -- newtype Payload (n :: Nat) a = Payload a
 
