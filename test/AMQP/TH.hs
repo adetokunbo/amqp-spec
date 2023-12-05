@@ -42,7 +42,7 @@ compileRoundTripSpecDecs = do
   (classInfos, _basicHdrTyInfo) <- runIO extractInfo
   let commandTypes = concatMap derivDataTypeNamesOf classInfos
       basicHdrTypes = map mkName $ methodName : basicName : map (pascalCase . fst) _basicHdrTyInfo
-  pure $ DoE $ map genRoundtripStmt $ commandTypes <> basicHdrTypes
+  pure $ DoE Nothing $ map genRoundtripStmt $ commandTypes <> basicHdrTypes
 
 
 genRoundtripStmt :: Name -> Stmt

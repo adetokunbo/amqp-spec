@@ -30,6 +30,8 @@ import Protocol.AMQP.Translated
 import Test.Validity.ParserOf (GenValid (..), suchThat)
 
 
+compileDerivingDecs
+
 deriving anyclass instance GenValid (InnerFrame Method)
 
 
@@ -85,4 +87,3 @@ instance GenValid ShortString where
   genValid = ShortString <$> (genValid `suchThat` (\x -> BS.length x <= 255))
 
 
-compileDerivingDecs

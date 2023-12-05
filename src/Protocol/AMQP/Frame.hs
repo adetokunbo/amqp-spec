@@ -5,13 +5,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -31,6 +27,7 @@ import qualified Data.ByteString as BS
 import Data.ByteString.Builder (word16BE)
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Lazy as LBS
+import Data.Kind (Type)
 import Data.Proxy (Proxy (..))
 import Data.Validity (Validity (..))
 import Data.Validity.ByteString ()
@@ -79,11 +76,11 @@ instance
   parserOf = Frame <$> parserOf
 
 
-data Frame' (n :: Nat) a :: * where
+data Frame' (n :: Nat) a :: Type where
   Frame' :: InnerFrame a -> Frame' (FrameType a) a
 
 
-type family FrameType (a :: *) :: Nat
+type family FrameType (a :: Type) :: Nat
 
 
 instance
@@ -151,7 +148,7 @@ instance ToBuilder Heartbeat BB.Builder where
   toBuilder _ = toBuilder BS.empty
 
 
-data ContentBody = Body !BS.ByteString
+newtype ContentBody = Body BS.ByteString
   deriving (Eq, Show, Generic)
   deriving anyclass (Validity)
 
@@ -184,10 +181,10 @@ instance ParserOf ContentHdr where
 
 instance ToBuilder ContentHdr BB.Builder where
   toBuilder x =
-    (toBuilder $ chClassId x)
-      <> (toBuilder $ chWeight x)
-      <> (toBuilder $ chBodySize x)
-      <> (toBuilder $ chHeaders x)
+    toBuilder (chClassId x)
+      <> toBuilder (chWeight x)
+      <> toBuilder (chBodySize x)
+      <> toBuilder (chHeaders x)
 
 -- newtype Payload (n :: Nat) a = Payload a
 

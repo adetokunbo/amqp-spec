@@ -37,6 +37,7 @@ module Protocol.AMQP.TH (
   anyBitIndexedMbConE,
 ) where
 
+import Data.Bifunctor (bimap)
 import qualified Data.ByteString.Builder as BB
 import Data.Char (toTitle)
 import Data.Foldable (msum)
@@ -63,7 +64,7 @@ import Protocol.AMQP.FieldValue
 compileXml :: Q [Dec]
 compileXml = do
   (classInfos, basicHdrTyInfo) <- runIO extractInfo
-  classes <- fmap msum $ mapM mkClassDecs classInfos
+  classes <- msum <$> mapM mkClassDecs classInfos
   basicHdrs <- mkBasicHdrType basicHdrTyInfo
   let methodDecs = methodSumTyDecs classInfos
   pure $ methodDecs <> classes <> basicHdrs
@@ -71,7 +72,7 @@ compileXml = do
 
 asParserOfExp :: ClassInfo -> Exp
 asParserOfExp ci =
-  let pairsExp = ListE $ map toPairExp $ map asMatchTwoPair $ ciMethods ci
+  let pairsExp = ListE $ map (toPairExp . asMatchTwoPair) (ciMethods ci)
       toPairExp (x, y) = TupE [Just (LitE $ IntegerL $ toInteger x), Just y]
       firstApp = AppE (VarE 'with2Prefixes) (LitE $ IntegerL $ toInteger $ ciPrefix ci)
    in AppE firstApp pairsExp
@@ -87,7 +88,7 @@ methodSumTyDecs classInfos =
       parserOfDec = parserOfInstanceD' methodName $ AppE (VarE 'choice) $ ListE parserOfExps
       toBuilderDec = builderInstanceD methodName $ toBuilderPatExp <$> classInfos
       toBuilderOfX = appOnXE (VarE 'toBuilder)
-      toBuilderPatExp ci = (ConP (conName ci) [xAsVarP], toBuilderOfX)
+      toBuilderPatExp ci = (ConP (conName ci) [] [xAsVarP], toBuilderOfX)
    in [sumTyDec, parserOfDec, toBuilderDec]
 
 
@@ -95,7 +96,7 @@ mkClassDecs :: ClassInfo -> DecsQ
 mkClassDecs ci@ClassInfo {ciMethods = methods} = do
   let patExps = map (mkToBuilderPatExp (ciPrefix ci)) (ciMethods ci)
       mkInnerD x =
-        if ((length $ miFields $ xmiInfo x) < 2)
+        if length (miFields $ xmiInfo x) < 2
           then pure []
           else pure $ mkInnerDataDecl (xmiDataName x) (xmiDataFields x)
 
@@ -125,8 +126,8 @@ mkToBuilderPatExp classPre xmi =
       withPrefixesE = appOnXE $ appMethodLit $ appClassLit $ VarE 'withPrefixes
       conName = mkName $ xmiConstrName xmi
    in case xmiDataFields xmi of
-        [] -> (ConP conName [], onlyPrefixesE)
-        _gtThan0 -> (ConP conName [xAsVarP], withPrefixesE)
+        [] -> (ConP conName [] [], onlyPrefixesE)
+        _gtThan0 -> (ConP conName [] [xAsVarP], withPrefixesE)
 
 
 asMatchTwoPair :: XMethodInfo -> (Word16, Exp)
@@ -143,7 +144,7 @@ mkBitIndexDecs :: [(String, Name)] -> DecsQ
 mkBitIndexDecs fields =
   let indexed = zip [0 ..] fields
       mk (pos, (raw, original)) = bitIndexDecsOf (pascalCase raw) pos original
-   in fmap concat $ traverse mk indexed
+   in (concat <$> traverse mk indexed)
 
 
 {- | Generates the BasicHdr data definition
@@ -187,12 +188,12 @@ mkInnerDataParserOfDoE constr fields =
         ]
       boundVarsE (n, _e) = (mkName n, VarE $ mkBoundName n)
       recordConE = AppE (VarE 'pure) (RecConE constrName $ map boundVarsE fields)
-   in DoE $ concatMap bindOf (groupBitFields fields) <> [NoBindS recordConE]
+   in DoE Nothing $ concatMap bindOf (groupBitFields fields) <> [NoBindS recordConE]
 
 
 groupBitFields :: Foldable f => f (String, Name) -> [NE.NonEmpty (String, Name)]
 groupBitFields =
-  let grouper = \x y -> snd x == ''Bit && snd y == ''Bit
+  let grouper x y = snd x == ''Bit && snd y == ''Bit
    in NE.groupBy grouper
 
 
@@ -250,7 +251,7 @@ bitIndexTyInstDecs wrapperName pos =
 builderForNewTyDecs :: String -> Dec
 builderForNewTyDecs wrapperName =
   let name = mkName wrapperName
-      constrP = ConP name [xAsVarP]
+      constrP = ConP name [] [xAsVarP]
       instanceE = appOnXE $ VarE 'toBuilder
    in builderInstanceD wrapperName [(constrP, instanceE)]
 
@@ -311,13 +312,13 @@ invBuildBitsE fields =
 
 invToBuilderConE :: String -> Exp
 invToBuilderConE funcName =
-  let inner = appOnXE $ VarE $ mkName funcName 
+  let inner = appOnXE $ VarE $ mkName funcName
    in AppE (VarE 'toBuilder) inner
 
 
 recordAdtDec' :: String -> [(String, Name)] -> Dec
 recordAdtDec' typeName xs =
-  let fields = map (\(x, y) -> (mkName x, ConT y)) xs
+  let fields = map (bimap mkName ConT) xs
       tyName = mkName typeName
       con = RecC tyName $ (\(name, t) -> (name, fieldBang, t)) <$> fields
    in DataD [] tyName [] Nothing [con] [eqShowGenDeriv, validityDeriv]
@@ -331,7 +332,7 @@ recordAdtDec typeName fields =
 
 sumTypeD :: String -> [(String, [Name])] -> Dec
 sumTypeD typeName xs =
-  let constrs = map (\(x, y) -> (mkName x, map ConT y)) xs
+  let constrs = map (bimap mkName (map ConT)) xs
       derivs = [eqShowGenDeriv, validityDeriv]
    in DataD [] (mkName typeName) [] Nothing (fmap (uncurry sumCon) constrs) derivs
 
@@ -383,14 +384,18 @@ fieldBang = Bang NoSourceUnpackedness SourceStrict
 emptyBang :: Bang
 emptyBang = Bang NoSourceUnpackedness NoSourceStrictness
 
+
 appOnXE :: Exp -> Exp
-appOnXE e = AppE e xAsVarE 
+appOnXE e = AppE e xAsVarE
+
 
 xAsVarP :: Pat
-xAsVarP =  VarP xAsName
+xAsVarP = VarP xAsName
+
 
 xAsVarE :: Exp
-xAsVarE = VarE xAsName 
+xAsVarE = VarE xAsName
+
 
 xAsName :: Name
 xAsName = mkName "x"
