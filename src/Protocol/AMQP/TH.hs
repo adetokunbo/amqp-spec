@@ -59,6 +59,7 @@ import Protocol.AMQP.Extracted (
   methodName,
  )
 import Protocol.AMQP.FieldValue
+import Protocol.AMQP.TH.CPP (compatConP, compatDoE)
 
 
 compileXml :: Q [Dec]
@@ -88,7 +89,7 @@ methodSumTyDecs classInfos =
       parserOfDec = parserOfInstanceD' methodName $ AppE (VarE 'choice) $ ListE parserOfExps
       toBuilderDec = builderInstanceD methodName $ toBuilderPatExp <$> classInfos
       toBuilderOfX = appOnXE (VarE 'toBuilder)
-      toBuilderPatExp ci = (ConP (conName ci) [] [xAsVarP], toBuilderOfX)
+      toBuilderPatExp ci = (compatConP (conName ci) [xAsVarP], toBuilderOfX)
    in [sumTyDec, parserOfDec, toBuilderDec]
 
 
@@ -126,8 +127,8 @@ mkToBuilderPatExp classPre xmi =
       withPrefixesE = appOnXE $ appMethodLit $ appClassLit $ VarE 'withPrefixes
       conName = mkName $ xmiConstrName xmi
    in case xmiDataFields xmi of
-        [] -> (ConP conName [] [], onlyPrefixesE)
-        _gtThan0 -> (ConP conName [] [xAsVarP], withPrefixesE)
+        [] -> (compatConP conName [], onlyPrefixesE)
+        _gtThan0 -> (compatConP conName [xAsVarP], withPrefixesE)
 
 
 asMatchTwoPair :: XMethodInfo -> (Word16, Exp)
@@ -188,7 +189,7 @@ mkInnerDataParserOfDoE constr fields =
         ]
       boundVarsE (n, _e) = (mkName n, VarE $ mkBoundName n)
       recordConE = AppE (VarE 'pure) (RecConE constrName $ map boundVarsE fields)
-   in DoE Nothing $ concatMap bindOf (groupBitFields fields) <> [NoBindS recordConE]
+   in compatDoE $ concatMap bindOf (groupBitFields fields) <> [NoBindS recordConE]
 
 
 groupBitFields :: Foldable f => f (String, Name) -> [NE.NonEmpty (String, Name)]
@@ -251,7 +252,7 @@ bitIndexTyInstDecs wrapperName pos =
 builderForNewTyDecs :: String -> Dec
 builderForNewTyDecs wrapperName =
   let name = mkName wrapperName
-      constrP = ConP name [] [xAsVarP]
+      constrP = compatConP name [xAsVarP]
       instanceE = appOnXE $ VarE 'toBuilder
    in builderInstanceD wrapperName [(constrP, instanceE)]
 

@@ -36,6 +36,7 @@ library
     Protocol.AMQP.Frame
     Protocol.AMQP.Handshake
     Protocol.AMQP.TH
+    Protocol.AMQP.TH.CPP
     Protocol.AMQP.Translated
     Protocol.AMQP.TrackedIds
 
