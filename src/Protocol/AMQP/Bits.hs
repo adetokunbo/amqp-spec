@@ -33,6 +33,7 @@ import Data.Word (Word16)
 import GHC.TypeLits (KnownNat, Nat, natVal)
 import qualified Protocol.AMQP.Attoparsec as A
 import Protocol.AMQP.Elementary (ParserOf (..), ToBuilder (..))
+import Data.Kind (Type)
 
 
 data CanBuild = forall a. ToBuilder a BB.Builder => CanBuild a
@@ -62,4 +63,4 @@ anyBitIndexedMb x | testBit x (fromIntegral $ natVal @n Proxy) = fmap Just $ par
 anyBitIndexedMb _ = pure Nothing
 
 
-type family BitIndex (a :: *) :: Nat
+type family BitIndex (a :: Type) :: Nat
