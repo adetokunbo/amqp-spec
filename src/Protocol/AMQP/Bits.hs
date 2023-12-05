@@ -1,17 +1,11 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_HADDOCK prune not-home #-}
@@ -47,7 +41,7 @@ withBitIndexPrefix xs =
 
 canStep :: (Word16, Int, BB.Builder) -> Maybe CanBuild -> (Word16, Int, BB.Builder)
 canStep (acc, pos, builder) Nothing = (acc, pos + 1, builder)
-canStep (acc, pos, builder) (Just (CanBuild b)) = (acc `setBit` pos, pos + 1, builder <> (toBuilder b))
+canStep (acc, pos, builder) (Just (CanBuild b)) = (acc `setBit` pos, pos + 1, builder <> toBuilder b)
 
 
 anyBitIndexedMb ::
@@ -59,7 +53,7 @@ anyBitIndexedMb ::
   ) =>
   b ->
   A.Parser (Maybe a)
-anyBitIndexedMb x | testBit x (fromIntegral $ natVal @n Proxy) = fmap Just $ parserOf
+anyBitIndexedMb x | testBit x (fromIntegral $ natVal @n Proxy) = Just <$> parserOf
 anyBitIndexedMb _ = pure Nothing
 
 
