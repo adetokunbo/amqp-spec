@@ -35,6 +35,7 @@ import Protocol.AMQP.Extracted (
   methodName,
  )
 import Test.Validity.ParserOf (roundtripSpecFor')
+import Protocol.AMQP.TH.CPP (compatDoE)
 
 
 compileRoundTripSpecDecs :: Q Exp
@@ -42,7 +43,7 @@ compileRoundTripSpecDecs = do
   (classInfos, _basicHdrTyInfo) <- runIO extractInfo
   let commandTypes = concatMap derivDataTypeNamesOf classInfos
       basicHdrTypes = map mkName $ methodName : basicName : map (pascalCase . fst) _basicHdrTyInfo
-  pure $ DoE Nothing $ map genRoundtripStmt $ commandTypes <> basicHdrTypes
+  pure $ compatDoE $ map genRoundtripStmt $ commandTypes <> basicHdrTypes
 
 
 genRoundtripStmt :: Name -> Stmt
