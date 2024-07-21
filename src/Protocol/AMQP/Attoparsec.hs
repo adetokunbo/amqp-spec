@@ -47,7 +47,7 @@ with1Prefix pre parser = A.word16be pre *> parser
 -- | Match 2 given @'Word16'@ prefixes then the apply the corresponding @Parser@.
 with2Prefixes :: Word16 -> [(Word16, A.Parser a)] -> A.Parser a
 with2Prefixes pre prefixedParsers =
-  let matchPres xs = A.choice $ map (\(nextPre, p) -> with1Prefix nextPre p) xs
+  let matchPres = A.choice . map (uncurry with1Prefix)
    in with1Prefix pre $ matchPres prefixedParsers
 
 
