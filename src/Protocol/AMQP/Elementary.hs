@@ -119,7 +119,11 @@ newtype DecimalValue = DecimalValue (Octet, LongInt)
   deriving (Validity) via (Octet, LongInt)
 
 
+{- | @ParserOf@ marks types with an 'A.Parser' that are involved in the
+implementation of the AMQP protocol
+-}
 class ParserOf a where
+  -- | the 'A.Parser' for given type
   parserOf :: A.Parser a
 
 
