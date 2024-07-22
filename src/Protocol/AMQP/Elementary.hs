@@ -20,15 +20,17 @@ the specification.
 module Protocol.AMQP.Elementary (
   -- * elementary data types
   DecimalValue (..),
-  ShortString (..),
-  mkShortString,
-  unsafeMkShortString,
+  ShortString(..),
   LongString (..),
   Bit (..),
   Octet (..),
   LongInt (..),
   LongLongInt (..),
   ShortInt (..),
+
+  -- * constructors for 'ShortString'
+  mkShortString,
+  unsafeMkShortString,
 
   -- * ParserOf
   ParserOf (..),
@@ -155,8 +157,9 @@ instance Validity ShortString where
 
 
 unsafeMkShortString :: Text -> ShortString
-unsafeMkShortString = ShortString . Text.encodeUtf8 
-  
+unsafeMkShortString = ShortString . Text.encodeUtf8
+
+
 mkShortString :: Text -> Either Text ShortString
 mkShortString x =
   let encoded = Text.encodeUtf8 x
