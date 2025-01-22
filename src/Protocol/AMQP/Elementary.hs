@@ -1,10 +1,6 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_HADDOCK prune not-home #-}
 
@@ -24,15 +20,17 @@ the specification.
 module Protocol.AMQP.Elementary (
   -- * elementary data types
   DecimalValue (..),
-  ShortString (..),
-  mkShortString,
-  unsafeMkShortString,
+  ShortString(..),
   LongString (..),
   Bit (..),
   Octet (..),
   LongInt (..),
   LongLongInt (..),
   ShortInt (..),
+
+  -- * constructors for 'ShortString'
+  mkShortString,
+  unsafeMkShortString,
 
   -- * ParserOf
   ParserOf (..),
@@ -121,7 +119,11 @@ newtype DecimalValue = DecimalValue (Octet, LongInt)
   deriving (Validity) via (Octet, LongInt)
 
 
+{- | @ParserOf@ marks types with an 'A.Parser' that are involved in the
+implementation of the AMQP protocol
+-}
 class ParserOf a where
+  -- | the 'A.Parser' for given type
   parserOf :: A.Parser a
 
 
@@ -159,8 +161,9 @@ instance Validity ShortString where
 
 
 unsafeMkShortString :: Text -> ShortString
-unsafeMkShortString = ShortString . Text.encodeUtf8 
-  
+unsafeMkShortString = ShortString . Text.encodeUtf8
+
+
 mkShortString :: Text -> Either Text ShortString
 mkShortString x =
   let encoded = Text.encodeUtf8 x
