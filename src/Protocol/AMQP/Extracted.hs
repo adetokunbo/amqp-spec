@@ -5,7 +5,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskellQuotes #-}
 {-# OPTIONS_HADDOCK prune not-home #-}
 
 {- |
@@ -65,7 +65,7 @@ specPath = "spec/amqp0-9-1.xml"
 
 extractInfo :: IO ([ClassInfo], [(String, Name)])
 extractInfo = do
-  xmlDoc <- (parseXMLDoc <$> loadXml)
+  xmlDoc <- parseXMLDoc <$> loadXml
   let classInfos = maybe [] toClassInfos xmlDoc
       basicPropInfo = maybe [] toBasicHdrInfo xmlDoc
   pure (classInfos, basicPropInfo)
@@ -82,7 +82,7 @@ xmlSpecPath = getDataFileName specPath
 toBasicHdrInfo :: Element -> [(String, Name)]
 toBasicHdrInfo el =
   let go = selectAll "field" nameAndDomain
-      isBasicClass e = (qName $ elName e) == "class" && attrNamed "name" e == Just "basic"
+      isBasicClass e = qName (elName e) == "class" && attrNamed "name" e == Just "basic"
    in maybe [] go $ filterElement isBasicClass el
 
 
@@ -95,7 +95,7 @@ nameAndDomain e =
 
 
 loadClassInfos :: IO [ClassInfo]
-loadClassInfos = (parseXMLDoc <$> loadXml) >>= pure . maybe [] toClassInfos
+loadClassInfos = loadXml >>= (pure . maybe [] toClassInfos) . parseXMLDoc
 
 
 loadXml :: IO Text
@@ -112,7 +112,7 @@ nameAndType e =
 
 toClassInfos :: Element -> [ClassInfo]
 toClassInfos e =
-  let infos = selectAll "class" (flip fromElement namedDomains) e
+  let infos = selectAll "class" (`fromElement` namedDomains) e
       namedDomains = selectAll "domain" nameAndType e
    in infos
 
@@ -137,7 +137,7 @@ instance FromElement ClassInfo where
         ciMethods = case ciName of
           Nothing -> pure []
           Just x -> pure $ map (xMethodInfo x) theMethods
-        theMethods = selectAll "method" (flip fromElement xs) e
+        theMethods = selectAll "method" (`fromElement` xs) e
      in ClassInfo <$> ciName <*> ciPrefix <*> ciLabel <*> ciMethods <*> ciSumTyName
 
 
@@ -155,13 +155,13 @@ instance FromElement MethodInfo where
     let miName = nameAttr e
         miPrefix = prefixAttr' e
         miLabel = labelAttr e
-        miFields = pure $ selectAll "field" (flip fromElement xs) e
+        miFields = pure $ selectAll "field" (`fromElement` xs) e
      in MethodInfo <$> miName <*> miPrefix <*> miLabel <*> miFields
 
 
 xMethodInfo :: String -> MethodInfo -> XMethodInfo
 xMethodInfo className xmiInfo =
-  let xmiConstrName = methodPreOf className ++ (uniqifyMethod $ miName xmiInfo)
+  let xmiConstrName = methodPreOf className ++ uniqifyMethod (miName xmiInfo)
       xmiDataName = xmiConstrName ++ "Data"
       xmiDataPrefix = capsOf xmiConstrName
       xmiDataFields = dataFieldsOf xmiDataPrefix (miFields xmiInfo)
@@ -209,7 +209,7 @@ class FromElement a where
 dataFieldsOf :: String -> [FieldInfo] -> [(String, Name)]
 dataFieldsOf dataPrefix xs =
   let typeOf = fiTypeName
-      nameOf x = dataPrefix ++ (pascalCase $ fiName x)
+      nameOf x = dataPrefix ++ pascalCase (fiName x)
    in map (\x -> (nameOf x, typeOf x)) xs
 
 
@@ -233,7 +233,7 @@ selectAll elemName mk el = catMaybes $ map mk $ kids elemName el
 
 
 kids :: String -> Element -> [Element]
-kids name el = filterChildrenName ((== name) . qName) el
+kids name = filterChildrenName ((== name) . qName)
 
 
 methodPreOf :: String -> String
