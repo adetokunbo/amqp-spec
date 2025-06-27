@@ -185,14 +185,14 @@ mkInnerDataParserOfDoE constr fields =
       bindOf ((n, _e) :| []) = [BindS (VarP $ mkBoundName n) $ VarE 'parserOf]
       bindOf (x :| xs) =
         [ BindS (VarP packedName) (VarE 'parserOf)
-        , LetS $ map letD $ zip [0 ..] (x : xs)
+        , LetS $ zipWith (curry letD) [0 ..] (x : xs)
         ]
       boundVarsE (n, _e) = (mkName n, VarE $ mkBoundName n)
       recordConE = AppE (VarE 'pure) (RecConE constrName $ map boundVarsE fields)
    in compatDoE $ concatMap bindOf (groupBitFields fields) <> [NoBindS recordConE]
 
 
-groupBitFields :: Foldable f => f (String, Name) -> [NE.NonEmpty (String, Name)]
+groupBitFields :: (Foldable f) => f (String, Name) -> [NE.NonEmpty (String, Name)]
 groupBitFields =
   let grouper x y = snd x == ''Bit && snd y == ''Bit
    in NE.groupBy grouper
