@@ -58,4 +58,4 @@ jobs:
       - run: cabal update
       - run: cabal build $CONFIG
       - run: cabal test $CONFIG
-      - run: cabal sdist $CONFIG
+      - run: cabal sdist
